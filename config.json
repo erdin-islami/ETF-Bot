@@ -1,0 +1,56 @@
+{
+  "_hinweis": "Hier stellst du den Bot ein. Nach dem Speichern übernimmt er die Änderung beim nächsten Lauf.",
+
+  "watchlist": [
+    { "symbol": "EUNL.DE", "name": "iShares Core MSCI World USD (Acc)", "group": "Welt" },
+    { "symbol": "SXR8.DE", "name": "iShares Core S&P 500 USD (Acc)", "group": "USA" },
+    { "symbol": "SXRV.DE", "name": "iShares NASDAQ 100 USD (Acc)", "group": "USA Tech" },
+    { "symbol": "QDVE.DE", "name": "iShares S&P 500 Information Tech USD (Acc)", "group": "USA Tech" },
+    { "symbol": "NVDA", "name": "NVIDIA (US-Börse, in US-Dollar)", "group": "Aktie" },
+    { "symbol": "4GLD.DE", "name": "Xetra-Gold", "group": "Gold" }
+  ],
+
+  "vix_symbol": "^VIX",
+
+  "intraday_interval": "15m",
+  "intraday_range": "60d",
+  "daily_range": "2y",
+
+  "order_fee_eur": 1.0,
+  "trade_amount_eur": 50,
+  "_gebuehren_hinweis": "Annahme: 1 € pro Kauf und 1 € pro Verkauf. Bitte mit deinem Broker abgleichen.",
+
+  "zone_strong": 50,
+  "zone_soft": 25,
+  "backtest_signal_score": 55,
+  "backtest_horizons_bars": [8, 16],
+
+  "news_max_age_hours": 48,
+  "news_max_items": 40,
+  "news_feeds": [
+    {
+      "name": "Börse & Märkte",
+      "url": "https://news.google.com/rss/search?q=B%C3%B6rse+OR+DAX+OR+%22Wall+Street%22+OR+ETF+when:1d&hl=de&gl=DE&ceid=DE:de"
+    },
+    {
+      "name": "Zinsen & Notenbanken",
+      "url": "https://news.google.com/rss/search?q=Zinsen+OR+Fed+OR+EZB+OR+Notenbank+OR+Inflation+when:1d&hl=de&gl=DE&ceid=DE:de"
+    },
+    {
+      "name": "Zölle & Handel",
+      "url": "https://news.google.com/rss/search?q=Z%C3%B6lle+OR+Handelskrieg+OR+Sanktionen+when:2d&hl=de&gl=DE&ceid=DE:de"
+    },
+    {
+      "name": "Weltgeschehen & Märkte",
+      "url": "https://news.google.com/rss/search?q=Ukraine+OR+Nahost+OR+Iran+OR+Taiwan+OR+China+B%C3%B6rse+when:2d&hl=de&gl=DE&ceid=DE:de"
+    },
+    {
+      "name": "Tagesschau Wirtschaft",
+      "url": "https://www.tagesschau.de/wirtschaft/index~rss2.xml"
+    },
+    {
+      "name": "Yahoo Finance",
+      "url": "https://finance.yahoo.com/news/rssindex"
+    }
+  ]
+}
