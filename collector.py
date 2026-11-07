@@ -341,7 +341,44 @@ def backtest(t, c, off, scores, threshold, horizons, cost_pct, cooldown=8):
     return result
 
 
-def analyze(item, intr, daily, cfg, now_ts):
+def langfrist(daily, price, trend):
+    """Kennzahlen fuer die lange Sicht (aus Tageskursen). Ordnet nur ein, keine Empfehlung."""
+    dc, dh, dl = daily["c"], daily["h"], daily["l"]
+    n = len(dc)
+
+    def ret(days):
+        return (dc[-1] / dc[-1 - days] - 1.0) * 100.0 if n > days else None
+
+    y = min(n, 252)
+    window = dc[-y:]
+    hi52, lo52 = max(dh[-y:]), min(dl[-y:])
+    peak, mdd = window[0], 0.0
+    for x in window:
+        peak = max(peak, x)
+        mdd = min(mdd, x / peak - 1.0)
+    rets = [math.log(window[i] / window[i - 1]) for i in range(1, len(window))]
+    vol = statistics.pstdev(rets) * math.sqrt(252) * 100.0 if len(rets) > 20 else None
+    dd = min(0.0, (price / hi52 - 1.0) * 100.0)
+    if trend == "Abwärtstrend":
+        lage, text = "Schwäche", "Abwärtstrend: Der Kurs liegt unter dem 200-Tage-Schnitt."
+    elif dd <= -15:
+        lage, text = "Korrektur", "Mehr als 15 % unter dem 52-Wochen-Hoch."
+    elif dd <= -5:
+        lage, text = "Rücksetzer", "Zwischen 5 und 15 % unter dem 52-Wochen-Hoch."
+    elif trend == "Aufwärtstrend":
+        lage, text = "intakt", "Aufwärtstrend, nahe am 52-Wochen-Hoch."
+    else:
+        lage, text = "seitwärts", "Kein klarer Trend, nahe am 52-Wochen-Hoch."
+    return {
+        "lage": lage, "text": text, "trend": trend,
+        "r1m_pct": rnd(ret(21), 2), "r3m_pct": rnd(ret(63), 2), "r6m_pct": rnd(ret(126), 2),
+        "r1j_pct": rnd((dc[-1] / dc[-y] - 1.0) * 100.0, 2) if n >= 240 else None,
+        "abstand_hoch_pct": rnd(dd, 2), "hoch_52w": rnd(hi52, 3), "tief_52w": rnd(lo52, 3),
+        "vol_pa_pct": rnd(vol, 1), "max_rueckgang_pct": rnd(mdd * 100.0, 1),
+    }
+
+
+def analyze(item, intr, daily, cfg, now_ts, with_series=True):
     t, c, h, l = intr["t"], intr["c"], intr["h"], intr["l"]
     meta = intr["meta"]
     off = int(meta.get("gmtoffset", 0))
@@ -456,7 +493,8 @@ def analyze(item, intr, daily, cfg, now_ts):
             "schwankung_4h_pct": rnd(vol4h, 2),
         },
         "rueckblick": bt,
-        "series": series,
+        "series": series if with_series else None,
+        "langfrist": langfrist(daily, price, trend),
         "error": None,
         "stale": False,
     }
@@ -709,6 +747,61 @@ def vix_info(cfg, demo, now_ts):
         return {"value": None, "change_pct": None, "level": None, "error": str(exc)[:120]}
 
 
+def fetch_symbol(item, cfg, demo, idx, now_ts, daily_range):
+    if demo:
+        return demo_data(item, idx, now_ts)
+    intr = fetch_yahoo(item["symbol"], cfg["intraday_interval"], cfg["intraday_range"])
+    time.sleep(0.4)
+    daily = fetch_yahoo(item["symbol"], "1d", daily_range)
+    time.sleep(0.4)
+    return intr, daily
+
+
+def fx_rate(cfg, demo, prev):
+    """Wechselkurs: wie viele US-Dollar ein Euro kostet. Bei Ausfall der letzte bekannte Wert."""
+    if demo:
+        return 1.16
+    try:
+        r = fetch_yahoo(cfg.get("fx_symbol", "EURUSD=X"), "1d", "5d")["c"][-1]
+        if 0.5 < r < 2.0:
+            return r
+    except Exception as exc:  # noqa: BLE001
+        print(f"FEHLER Wechselkurs: {str(exc)[:150]}", file=sys.stderr)
+    return (prev.get("fx") or {}).get("eurusd")
+
+
+def scan_stocks(cfg, by_sym, raw, prev_aktien, demo, now_ts, budget_s=420):
+    """Durchsucht die Aktienliste mit derselben Bewertung wie die ETFs.
+    Werte, die schon in der Beobachtungsliste sind, werden wiederverwendet (spart Abrufe)."""
+    start = time.time()
+    out, errors = [], 0
+    for idx, item in enumerate(cfg.get("aktien_universum", [])):
+        sym = item["symbol"]
+        if sym in by_sym:
+            r = dict(by_sym[sym])
+            r["series"] = None
+            r["name"], r["group"] = item["name"], item.get("group", "")
+            out.append(r)
+            continue
+        try:
+            if time.time() - start > budget_s:
+                raise RuntimeError("Zeitbudget aufgebraucht")
+            intr, daily = fetch_symbol(item, cfg, demo, 100 + idx, now_ts, cfg.get("aktien_daily_range", "1y"))
+            res = analyze(item, intr, daily, cfg, now_ts, with_series=False)
+            raw[sym] = (intr["t"], intr["c"], res["gmtoffset"])
+            out.append(res)
+        except Exception as exc:  # noqa: BLE001
+            errors += 1
+            msg = str(exc)[:150]
+            print(f"FEHLER (Aktie) {sym}: {msg}", file=sys.stderr)
+            old = prev_aktien.get(sym)
+            if old and old.get("price") is not None:
+                old = dict(old)
+                old["stale"], old["error"] = True, msg
+                out.append(old)
+    return out, errors
+
+
 def main():
     ap = argparse.ArgumentParser(description="ETF-Bot Datensammler")
     ap.add_argument("--demo", action="store_true", help="Beispieldaten statt echter Kurse")
@@ -728,20 +821,16 @@ def main():
     log = load_json(log_path, {})
     entries = [] if (log.get("demo") or not isinstance(log.get("entries"), list)) else log["entries"]
     prev_syms = {s["symbol"]: s for s in prev.get("symbols", []) if isinstance(s, dict) and "symbol" in s}
-    prev_zones = {k: v.get("zone") for k, v in prev_syms.items()}
+    prev_aktien = {s["symbol"]: s for s in prev.get("aktien", []) if isinstance(s, dict) and "symbol" in s}
+    prev_zones = {k: v.get("zone") for k, v in prev_aktien.items()}
+    prev_zones.update({k: v.get("zone") for k, v in prev_syms.items()})
 
     now_ts = int(time.time())
     symbols, raw = [], {}
     ok_count = 0
     for idx, item in enumerate(cfg["watchlist"]):
         try:
-            if args.demo:
-                intr, daily = demo_data(item, idx, now_ts)
-            else:
-                intr = fetch_yahoo(item["symbol"], cfg["intraday_interval"], cfg["intraday_range"])
-                time.sleep(0.4)
-                daily = fetch_yahoo(item["symbol"], "1d", cfg["daily_range"])
-                time.sleep(0.4)
+            intr, daily = fetch_symbol(item, cfg, args.demo, idx, now_ts, cfg["daily_range"])
             res = analyze(item, intr, daily, cfg, now_ts)
             raw[item["symbol"]] = (intr["t"], intr["c"], res["gmtoffset"])
             symbols.append(res)
@@ -760,6 +849,20 @@ def main():
                 symbols.append({"symbol": item["symbol"], "name": item["name"], "group": item.get("group", ""),
                                 "error": msg, "stale": False, "zone": None, "label": "Keine Daten", "score": None})
 
+    by_sym = {s["symbol"]: s for s in symbols if s.get("price") is not None}
+    aktien, aktien_err = scan_stocks(cfg, by_sym, raw, prev_aktien, args.demo, now_ts)
+    print(f"Aktien: {len(aktien)} von {len(cfg.get('aktien_universum', []))} ausgewertet, {aktien_err} Fehler")
+
+    # Euro-Umrechnung fuer alles, was in Dollar notiert
+    fx = fx_rate(cfg, args.demo, prev)
+    for res in symbols + aktien:
+        if res.get("price") is None:
+            continue
+        if res.get("currency") == "EUR":
+            res["price_eur"] = res["price"]
+        elif res.get("currency") == "USD" and fx:
+            res["price_eur"] = rnd(res["price"] / fx, 2)
+
     news = demo_news(now_ts) if args.demo else fetch_news(cfg, now_ts)
     market = {"vix": vix_info(cfg, args.demo, now_ts)}
     # Bei Ausfall nicht leer ueberschreiben, sondern die letzten guten Werte behalten
@@ -772,7 +875,8 @@ def main():
         if market["vix"].get("value") is None and old_vix.get("value") is not None:
             market["vix"] = dict(old_vix, stale=True)
 
-    entries = update_log(entries, symbols, raw, prev_zones, now_ts) if not args.demo else []
+    log_syms = symbols + [a for a in aktien if a["symbol"] not in by_sym]
+    entries = update_log(entries, log_syms, raw, prev_zones, now_ts) if not args.demo else []
     if args.demo:
         # ein paar Beispiel-Eintraege, damit die Tabelle im Dashboard nicht leer ist
         for k, (sym, typ, r2, r4) in enumerate([("SXR8.DE", "tief", 0.21, 0.34), ("EUNL.DE", "hoch", -0.08, 0.05),
@@ -795,13 +899,16 @@ def main():
             "zone_strong": cfg["zone_strong"],
             "backtest_signal_score": cfg["backtest_signal_score"],
         },
+        "fx": {"eurusd": rnd(fx, 4) if fx else None},
         "market": market,
         "symbols": symbols,
+        "aktien": aktien,
+        "aktien_status": {"gesamt": len(cfg.get("aktien_universum", [])), "ausgewertet": len(aktien), "fehler": aktien_err},
         "news": news,
     }
     write_json(data_path, result)
     write_json(log_path, {"demo": bool(args.demo), "entries": entries})
-    print(f"Fertig: {ok_count}/{len(cfg['watchlist'])} ETFs, {len(news['items'])} Meldungen -> {data_path}")
+    print(f"Fertig: {ok_count}/{len(cfg['watchlist'])} ETFs, {len(aktien)} Aktien, {len(news['items'])} Meldungen -> {data_path}")
 
 
 if __name__ == "__main__":

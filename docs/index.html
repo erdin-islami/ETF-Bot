@@ -76,7 +76,9 @@ summary{cursor:pointer;font-size:14px;color:var(--ink2);padding:4px 0;min-height
 table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
 th{font-weight:600;color:var(--ink2);white-space:nowrap}
-td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td .sub{white-space:normal}
+td.n .sub{white-space:nowrap}
 .scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:14px}
 .card .scroll{border:0;border-radius:0;background:none}
 .eff{display:inline-block;position:relative;width:70px;height:6px;background:var(--neutral);border-radius:3px;vertical-align:middle}
@@ -135,6 +137,12 @@ footer ul{padding-left:18px;margin:6px 0}
   <h2>ETFs im Blick</h2>
   <div id="main"></div>
 
+  <h2>Langfristig (Sparplan-Sicht)</h2>
+  <div id="langbox"></div>
+
+  <h2>Aktien: mögliche Kurzfrist-Kandidaten</h2>
+  <div id="aktienbox"></div>
+
   <h2>Nachrichten und Weltgeschehen</h2>
   <div id="newsbox"></div>
 
@@ -187,7 +195,7 @@ const fmtTime = ts => new Date(ts * 1000).toLocaleString('de-DE', { weekday: 'sh
 const fmtDateTime = ts => new Date(ts * 1000).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 /* ---------- Zustand ---------- */
-const state = { data: null, log: [], range: 5, view: 'cards', open: new Set(), theme: null, gen: null, err: null, amount: null, fee: null };
+const state = { data: null, log: [], range: 5, view: 'cards', open: new Set(), theme: null, aktienFilter: null, gen: null, err: null, amount: null, fee: null };
 try { const f = JSON.parse(localStorage.getItem('etfbot.fees') || 'null'); if (f) { state.amount = f.amount; state.fee = f.fee; } } catch (e) { /* ohne Speicher weiter */ }
 
 const ZONE = {
@@ -344,24 +352,25 @@ function detailsBlock(sym) {
 /* ---------- Kurzfrist-Einschaetzung (Regelwerk, keine Anlageberatung) ---------- */
 const venueOf = sym => /\.DE$/.test(sym.symbol) ? 'Xetra' : 'US-Börse';
 const priceStamp = sym => sym.last_bar_ts ? `Kurs ${fmtTime(sym.last_bar_ts)} · ${venueOf(sym)}` : '';
+const eurLine = sym => (sym.currency === 'USD' && sym.price_eur != null) ? h('div', { class: 'sub', text: `≈ ${nf(sym.price_eur)} € umgerechnet` }) : null;
 function verdict(sym) {
   const fs = feeSettings(), k = sym.kennzahlen || {};
-  const out = (code, label, reason) => ({ code, label, reason, glyph: { kauf: '✓', abwarten: '●', nein: '✕' }[code] });
-  if (sym.score == null) return out('abwarten', 'keine Einschätzung', 'Es liegen keine Daten vor.');
+  const out = (code, label, reason, short) => ({ code, label, reason, short, glyph: { kauf: '✓', abwarten: '●', nein: '✕' }[code] });
+  if (sym.score == null) return out('abwarten', 'keine Einschätzung', 'Es liegen keine Daten vor.', 'keine Daten');
   const vol = k.schwankung_4h_pct;
   if (vol != null && fs.cost > vol) {
-    return out('nein', 'eher nicht', `Die Gebühren (${nf(fs.cost, 1)} %) sind höher als die übliche Schwankung in 4 Std (± ${nf(vol, 1)} %). Ein Kurzfrist-Trade lohnt sich so kaum.`);
+    return out('nein', 'eher nicht', `Die Gebühren (${nf(fs.cost, 1)} %) sind höher als die übliche Schwankung in 4 Std (± ${nf(vol, 1)} %). Ein Kurzfrist-Trade lohnt sich so kaum.`, 'Gebühren zu hoch');
   }
-  if (sym.zone === 'hoch') return out('nein', 'eher nicht', 'Hoch-Zone: Der Kurs steht nach den Kennzahlen eher hoch.');
+  if (sym.zone === 'hoch') return out('nein', 'eher nicht', 'Hoch-Zone: Der Kurs steht nach den Kennzahlen eher hoch.', 'Hoch-Zone');
   if (sym.zone === 'tief') {
-    if (sym.trend === 'Abwärtstrend') return out('abwarten', 'abwarten', 'Tief-Zone, aber der Kurs liegt im Abwärtstrend und fällt oft weiter.');
+    if (sym.trend === 'Abwärtstrend') return out('abwarten', 'abwarten', 'Tief-Zone, aber der Kurs liegt im Abwärtstrend und fällt oft weiter.', 'Abwärtstrend');
     const r = sym.rueckblick && sym.rueckblick['16'];
     if (r && r.signale >= 20 && r.z != null && r.z >= 2 && r.schnitt_pct != null && r.schnitt_pct - fs.cost > 0) {
-      return out('kauf', 'prüfen', 'Tief-Zone. Im Rückblick war so ein Signal besser als der Durchschnitt und nach Gebühren im Plus (keine Garantie).');
+      return out('kauf', 'prüfen', 'Tief-Zone. Im Rückblick war so ein Signal besser als der Durchschnitt und nach Gebühren im Plus (keine Garantie).', 'Rückblick besser als Durchschnitt');
     }
-    return out('abwarten', 'abwarten', 'Tief-Zone, aber der Rückblick zeigt keinen belegten Vorteil nach Gebühren.');
+    return out('abwarten', 'abwarten', 'Tief-Zone, aber der Rückblick zeigt keinen belegten Vorteil nach Gebühren.', 'Rückblick ohne belegten Vorteil');
   }
-  return out('abwarten', 'abwarten', 'Kein Signal (Wert im neutralen Bereich).');
+  return out('abwarten', 'abwarten', 'Kein Signal (Wert im neutralen Bereich).', 'Kein Signal');
 }
 function card(sym) {
   if (sym.error && sym.price == null) {
@@ -373,7 +382,7 @@ function card(sym) {
   const el = h('article', { class: 'card', 'data-sym': sym.symbol },
     h('div', { class: 'top' },
       h('div', null, h('h3', { text: sym.name }), h('div', { class: 'sub', text: `${sym.symbol} · ${sym.group}` })),
-      h('div', { class: 'px' }, h('b', { text: nf(sym.price) + ' ' + ({ EUR: '€', USD: '$' }[sym.currency] || sym.currency || '') }), h('div', { class: cls(sym.change_pct_day), text: pc(sym.change_pct_day) + ' heute' }), h('div', { class: 'sub', text: priceStamp(sym) }))),
+      h('div', { class: 'px' }, h('b', { text: nf(sym.price) + ' ' + ({ EUR: '€', USD: '$' }[sym.currency] || sym.currency || '') }), h('div', { class: cls(sym.change_pct_day), text: pc(sym.change_pct_day) + ' heute' }), eurLine(sym), h('div', { class: 'sub', text: priceStamp(sym) }))),
     h('div', { class: 'zone ' + zoneCls }, h('span', { class: 'g', 'aria-hidden': 'true', text: glyphFor(sym) }), h('span', { text: sym.label }), h('span', { class: 'score', text: (sym.score > 0 ? '+' : '') + nf(sym.score, 0) })),
     meter(sym.score, sym.zone),
     (() => { const v = verdict(sym); return h('div', { class: 'verdict v-' + v.code }, h('b', { text: `${v.glyph} Kurzfrist-Kauf: ${v.label}` }), h('span', { text: v.reason })); })(),
@@ -518,7 +527,74 @@ function updateStatus() {
 }
 function renderAll(full = true) {
   if (!state.data) return;
-  renderBanners(); renderTiles(); renderMain(); renderNews(); renderLog(); updateStatus();
+  renderBanners(); renderTiles(); renderMain(); renderLangfrist(); renderAktien(); renderNews(); renderLog(); updateStatus();
+}
+
+const LANG_NOTE = {
+  'intakt': 'Der Kurs steht nahe am Hoch, der Trend zeigt nach oben.',
+  'seitwärts': 'Kein klarer Trend, der Kurs steht nahe am Hoch.',
+  'Rücksetzer': 'Etwas unter dem Hoch. Ein Sparplan bekommt dadurch pro Euro etwas mehr Anteile.',
+  'Korrektur': 'Deutlich unter dem Hoch. Ob und wann sich der Kurs erholt, ist offen. Bei breiten Indizes folgte historisch meist eine Erholung, bei Einzelaktien ist das weniger sicher.',
+  'Schwäche': 'Abwärtstrend: Der Kurs liegt unter dem 200-Tage-Schnitt. Solche Phasen können lange dauern.',
+};
+function renderLangfrist() {
+  const box = $('#langbox'); box.textContent = '';
+  const rows = state.data.symbols.filter(x => x.price != null && x.langfrist);
+  if (!rows.length) { box.append(h('div', { class: 'empty', text: 'Keine Langfrist-Daten vorhanden.' })); return; }
+  box.append(h('p', { class: 'note', text: 'Für einen Sparplan zählen Dauer und Regelmäßigkeit mehr als der Einstiegszeitpunkt. Diese Tabelle ordnet nur ein, wo die Kurse gerade stehen. „Hoch“ ist das 52-Wochen-Hoch, „Größter Rückgang“ der tiefste Absturz vom jeweiligen Hoch innerhalb des letzten Jahres. Vergangene Entwicklung ist keine Garantie, und das ist keine Anlageberatung.' }));
+  const cols = [['Name', 0], ['Lage', 0], ['Abstand zum Hoch', 1], ['1 Monat', 1], ['3 Monate', 1], ['1 Jahr', 1], ['Schwankung p. a.', 1], ['Größter Rückgang', 1]];
+  box.append(h('div', { class: 'scroll' }, h('table', null,
+    h('thead', null, h('tr', null, cols.map(([t, n]) => h('th', { class: n ? 'n' : '', text: t })))),
+    h('tbody', null, rows.map(sym => {
+      const L = sym.langfrist;
+      return h('tr', null,
+        h('td', null, h('b', { text: sym.name }), h('div', { class: 'sub', text: sym.symbol })),
+        h('td', { style: { minWidth: '200px' } }, h('b', { text: L.lage }), h('div', { class: 'sub', text: LANG_NOTE[L.lage] || L.text })),
+        h('td', { class: 'n ' + cls(L.abstand_hoch_pct), text: pc(L.abstand_hoch_pct, 1) }),
+        h('td', { class: 'n ' + cls(L.r1m_pct), text: pc(L.r1m_pct, 1) }),
+        h('td', { class: 'n ' + cls(L.r3m_pct), text: pc(L.r3m_pct, 1) }),
+        h('td', { class: 'n ' + cls(L.r1j_pct), text: pc(L.r1j_pct, 1) }),
+        h('td', { class: 'n', text: L.vol_pa_pct == null ? '–' : nf(L.vol_pa_pct, 1) + ' %' }),
+        h('td', { class: 'n ' + cls(L.max_rueckgang_pct), text: pc(L.max_rueckgang_pct, 1) }));
+    })))));
+}
+function renderAktien() {
+  const box = $('#aktienbox'); box.textContent = '';
+  const all = (state.data.aktien || []).filter(x => x.price != null);
+  if (!all.length) { box.append(h('div', { class: 'empty', text: 'Noch keine Aktien ausgewertet. Das passiert beim nächsten Lauf des Bots.' })); return; }
+  const fs = feeSettings();
+  const rank = { kauf: 0, abwarten: 1, nein: 2 };
+  const rows = all.map(a => ({ a, v: verdict(a) }))
+    .filter(r => !state.aktienFilter || r.a.zone === state.aktienFilter)
+    .sort((x, y) => rank[x.v.code] - rank[y.v.code] || (y.a.score ?? -999) - (x.a.score ?? -999));
+  const nTief = all.filter(a => a.zone === 'tief').length, nHoch = all.filter(a => a.zone === 'hoch').length;
+  const nPruef = all.filter(a => verdict(a).code === 'kauf').length;
+  const st = state.data.aktien_status || {};
+  box.append(h('p', { class: 'note', text: `Aktien schwanken stärker als ETFs. Dadurch sind kurzfristige Gewinne eher möglich, aber auch Verluste. Der „Mindest-Einsatz“ zeigt, ab welchem Einsatz die Gebühren (${nf(fs.fee, 2)} € je Order) kleiner sind als die übliche Schwankung in 4 Std. Aktuell: ${nTief} in der Tief-Zone, ${nPruef} mit „prüfen“. Sortiert nach Einschätzung und Wert. Rechenhilfe, keine Empfehlung.` }));
+  box.append(h('div', { class: 'chips', role: 'group', 'aria-label': 'Aktien filtern' },
+    [[null, `Alle (${all.length})`], ['tief', `Tief-Zone (${nTief})`], ['hoch', `Hoch-Zone (${nHoch})`]].map(([k, t]) =>
+      h('button', { type: 'button', class: 'chip', 'aria-pressed': String(state.aktienFilter === k), text: t, onclick: () => { state.aktienFilter = k; renderAktien(); } }))));
+  if (!rows.length) { box.append(h('div', { class: 'empty', text: 'Keine Aktie in dieser Zone.' })); }
+  else {
+    const cols = [['Aktie', 0], ['Kurzfrist-Kauf', 0], ['Kurs', 1], ['Heute', 1], ['Wert', 1], ['Zone', 0], ['± 4 Std', 1], ['Mindest-Einsatz', 1], ['Rückblick (4 Std)', 0]];
+    box.append(h('div', { class: 'scroll' }, h('table', null,
+      h('thead', null, h('tr', null, cols.map(([t, n]) => h('th', { class: n ? 'n' : '', text: t })))),
+      h('tbody', null, rows.map(({ a, v }) => {
+        const k = a.kennzahlen || {}, r4 = a.rueckblick && a.rueckblick['16'];
+        const usd = a.currency === 'USD' && a.price_eur != null;
+        return h('tr', null,
+          h('td', null, h('b', { text: a.name }), h('div', { class: 'sub', text: [a.symbol, a.group, a.stale ? 'veraltet' : ''].filter(Boolean).join(' · ') })),
+          h('td', { title: v.reason }, h('b', { text: `${v.glyph} ${v.label}` }), h('div', { class: 'sub', text: v.short })),
+          h('td', { class: 'n' }, h('b', { text: usd ? `≈ ${nf(a.price_eur)} €` : nf(a.price) + (a.currency === 'EUR' ? ' €' : '') }), usd ? h('div', { class: 'sub', text: nf(a.price) + ' $' }) : null),
+          h('td', { class: 'n ' + cls(a.change_pct_day), text: pc(a.change_pct_day) }),
+          h('td', { class: 'n', text: a.score == null ? '–' : nf(a.score, 0) }),
+          h('td', { text: (a.score == null ? '' : glyphFor(a) + ' ') + a.label }),
+          h('td', { class: 'n', text: k.schwankung_4h_pct == null ? '–' : '± ' + nf(k.schwankung_4h_pct) + ' %' }),
+          h('td', { class: 'n', text: k.schwankung_4h_pct ? 'ab ' + nf(200 * fs.fee / k.schwankung_4h_pct, 0) + ' €' : '–' }),
+          h('td', null, r4 ? [`${r4.signale} Signale, Ø ${pc(r4.schnitt_pct, 2)}`, h('div', { class: 'sub', text: r4.urteil })] : '–'));
+      })))));
+  }
+  if (st.fehler) box.append(h('p', { class: 'note', text: `${st.fehler} von ${st.gesamt} Aktien konnten beim letzten Lauf nicht geladen werden (Yahoo Finance). Falls vorhanden, siehst du ihre letzten Werte als „veraltet“.` }));
 }
 
 /* ---------- Laden ---------- */
