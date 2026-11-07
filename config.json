@@ -70,10 +70,6 @@
       "url": "https://www.tagesschau.de/wirtschaft/index~rss2.xml"
     },
     {
-      "name": "Yahoo Finance",
-      "url": "https://finance.yahoo.com/news/rssindex"
-    },
-    {
       "name": "Politik & Wirtschaft",
       "url": "https://news.google.com/rss/search?q=Bundesregierung+OR+Bundestag+OR+Haushalt+OR+Steuern+OR+Subventionen+Wirtschaft+when:1d&hl=de&gl=DE&ceid=DE:de"
     },
@@ -100,6 +96,14 @@
     {
       "name": "Tagesschau Ausland",
       "url": "https://www.tagesschau.de/ausland/index~rss2.xml"
+    },
+    {
+      "name": "US-Börsen (englisch)",
+      "url": "https://news.google.com/rss/search?q=Wall+Street+OR+Nasdaq+OR+Nvidia+OR+%22S%26P+500%22+when:1d&hl=en-US&gl=US&ceid=US:en"
+    },
+    {
+      "name": "US-Politik & Aktien (englisch)",
+      "url": "https://news.google.com/rss/search?q=Trump+tariffs+OR+%22export+controls%22+OR+antitrust+OR+sanctions+stocks+when:1d&hl=en-US&gl=US&ceid=US:en"
     }
   ],
   "fx_symbol": "EURUSD=X",
