@@ -43,3 +43,13 @@ Der Wert reicht von −100 (Hoch-Zone) bis +100 (Tief-Zone). Er ist ein gewichte
 | Lage in der 20-Tage-Spanne | 10 |
 
 Ab ±50 spricht das Dashboard von Tief- bzw. Hoch-Zone. Der Rückblick prüft für die letzten ~60 Tage, wie der Kurs nach früheren Signalen am selben Handelstag weiterlief, und vergleicht das mit dem Durchschnitt aller Zeitpunkte. Ein Signal ist nur dann etwas wert, wenn es klar besser ist als dieser Durchschnitt und die Gebühren übersteigt.
+
+## Spalte „Kurzfrist-Kauf“
+
+Das Dashboard leitet aus den Zahlen eine Einschätzung ab: **prüfen**, **abwarten** oder **eher nicht**, jeweils mit Begründung. Sie gilt nur für Kauf und Verkauf innerhalb weniger Stunden, nicht für einen Sparplan, und ist keine Anlageberatung. Die Regeln, in dieser Reihenfolge:
+
+1. Sind die Gebühren (Hin und Zurück, in Prozent des Einsatzes) höher als die übliche Schwankung in 4 Stunden, heißt es **eher nicht**.
+2. Steht der Wert in der Hoch-Zone, heißt es **eher nicht**.
+3. Steht er in der Tief-Zone, aber im Abwärtstrend, heißt es **abwarten**.
+4. In der Tief-Zone ohne Abwärtstrend gibt es nur dann **prüfen**, wenn der Rückblick (mindestens 20 Signale in ~60 Tagen) klar besser war als der Durchschnitt und nach Gebühren im Plus lag. Sonst **abwarten**.
+5. Ohne Signal heißt es **abwarten**.

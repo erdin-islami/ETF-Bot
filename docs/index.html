@@ -101,6 +101,10 @@ footer{margin-top:28px;font-size:13px;color:var(--ink2)}
 footer ul{padding-left:18px;margin:6px 0}
 .empty{padding:16px;color:var(--ink2);font-size:14px}
 .sr{position:absolute;left:-9999px}
+.verdict{margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--bg);border-left:4px solid var(--axis);font-size:13px}
+.verdict b{display:block;font-size:14px;font-weight:650}
+.verdict span{color:var(--ink2)}
+.v-kauf{border-left-color:var(--blue)} .v-nein{border-left-color:var(--red)}
 .card{min-width:0}
 @media (max-width:520px){ .cards{grid-template-columns:minmax(0,1fr)} h1{font-size:20px} }
 @media (forced-colors: active){ .band{opacity:.3} }
@@ -141,6 +145,7 @@ footer ul{padding-left:18px;margin:6px 0}
     <ul>
       <li>Der Wert reicht von −100 (Hoch-Zone) bis +100 (Tief-Zone). Er fasst Kennzahlen aus vergangenen Kursen zusammen (RSI, Bollinger-Bänder, MACD, 20-Tage-Spanne). Eine Vorhersage ist das nicht.</li>
       <li>Die Nachrichten-Stimmung zählt nur Stichwörter in Schlagzeilen. Sie ist grob und fließt nicht in den Wert ein.</li>
+      <li>„Kurzfrist-Kauf“ ist ein Regelwerk des Bots und gilt nur für Kauf und Verkauf innerhalb weniger Stunden, nicht für einen Sparplan. „Prüfen“ gibt es nur, wenn der Wert in der Tief-Zone steht, kein Abwärtstrend vorliegt, der Rückblick belegbar besser war als der Durchschnitt und die Gebühren nicht höher sind als die übliche 4-Std-Schwankung. Das ist keine Anlageberatung.</li>
       <li>Kursquelle ist Yahoo Finance (inoffiziell, kann ausfallen oder verzögert sein). Keine Anlageberatung.</li>
     </ul>
   </footer>
@@ -336,6 +341,28 @@ function detailsBlock(sym) {
   d.append(backtestBlock(sym));
   return d;
 }
+/* ---------- Kurzfrist-Einschaetzung (Regelwerk, keine Anlageberatung) ---------- */
+const venueOf = sym => /\.DE$/.test(sym.symbol) ? 'Xetra' : 'US-Börse';
+const priceStamp = sym => sym.last_bar_ts ? `Kurs ${fmtTime(sym.last_bar_ts)} · ${venueOf(sym)}` : '';
+function verdict(sym) {
+  const fs = feeSettings(), k = sym.kennzahlen || {};
+  const out = (code, label, reason) => ({ code, label, reason, glyph: { kauf: '✓', abwarten: '●', nein: '✕' }[code] });
+  if (sym.score == null) return out('abwarten', 'keine Einschätzung', 'Es liegen keine Daten vor.');
+  const vol = k.schwankung_4h_pct;
+  if (vol != null && fs.cost > vol) {
+    return out('nein', 'eher nicht', `Die Gebühren (${nf(fs.cost, 1)} %) sind höher als die übliche Schwankung in 4 Std (± ${nf(vol, 1)} %). Ein Kurzfrist-Trade lohnt sich so kaum.`);
+  }
+  if (sym.zone === 'hoch') return out('nein', 'eher nicht', 'Hoch-Zone: Der Kurs steht nach den Kennzahlen eher hoch.');
+  if (sym.zone === 'tief') {
+    if (sym.trend === 'Abwärtstrend') return out('abwarten', 'abwarten', 'Tief-Zone, aber der Kurs liegt im Abwärtstrend und fällt oft weiter.');
+    const r = sym.rueckblick && sym.rueckblick['16'];
+    if (r && r.signale >= 20 && r.z != null && r.z >= 2 && r.schnitt_pct != null && r.schnitt_pct - fs.cost > 0) {
+      return out('kauf', 'prüfen', 'Tief-Zone. Im Rückblick war so ein Signal besser als der Durchschnitt und nach Gebühren im Plus (keine Garantie).');
+    }
+    return out('abwarten', 'abwarten', 'Tief-Zone, aber der Rückblick zeigt keinen belegten Vorteil nach Gebühren.');
+  }
+  return out('abwarten', 'abwarten', 'Kein Signal (Wert im neutralen Bereich).');
+}
 function card(sym) {
   if (sym.error && sym.price == null) {
     return h('article', { class: 'card' }, h('h3', { text: sym.name }), h('div', { class: 'sub', text: sym.symbol }),
@@ -346,9 +373,10 @@ function card(sym) {
   const el = h('article', { class: 'card', 'data-sym': sym.symbol },
     h('div', { class: 'top' },
       h('div', null, h('h3', { text: sym.name }), h('div', { class: 'sub', text: `${sym.symbol} · ${sym.group}` })),
-      h('div', { class: 'px' }, h('b', { text: nf(sym.price) + ' ' + ({ EUR: '€', USD: '$' }[sym.currency] || sym.currency || '') }), h('div', { class: cls(sym.change_pct_day), text: pc(sym.change_pct_day) + ' heute' }))),
+      h('div', { class: 'px' }, h('b', { text: nf(sym.price) + ' ' + ({ EUR: '€', USD: '$' }[sym.currency] || sym.currency || '') }), h('div', { class: cls(sym.change_pct_day), text: pc(sym.change_pct_day) + ' heute' }), h('div', { class: 'sub', text: priceStamp(sym) }))),
     h('div', { class: 'zone ' + zoneCls }, h('span', { class: 'g', 'aria-hidden': 'true', text: glyphFor(sym) }), h('span', { text: sym.label }), h('span', { class: 'score', text: (sym.score > 0 ? '+' : '') + nf(sym.score, 0) })),
     meter(sym.score, sym.zone),
+    (() => { const v = verdict(sym); return h('div', { class: 'verdict v-' + v.code }, h('b', { text: `${v.glyph} Kurzfrist-Kauf: ${v.label}` }), h('span', { text: v.reason })); })(),
     sym.stale ? h('p', { class: 'note', text: `Veraltet: Das letzte Update dieses ETFs ist fehlgeschlagen (${sym.error}).` }) : null,
     box,
     detailsBlock(sym));
@@ -356,15 +384,16 @@ function card(sym) {
   return el;
 }
 function tableView(syms) {
-  const fs = feeSettings();
-  const head = ['ETF', 'Kurs', 'Heute', 'Wert', 'Zone', 'RSI 15 Min', 'Trend', '± 4 Std', 'Rückblick (4 Std)'];
+  const cols = [['ETF', 0], ['Kurzfrist-Kauf', 0], ['Kurs', 1], ['Heute', 1], ['Wert', 1], ['Zone', 0], ['RSI 15 Min', 1], ['Trend', 0], ['± 4 Std', 1], ['Rückblick (4 Std)', 0]];
   return h('div', { class: 'scroll' }, h('table', null,
-    h('thead', null, h('tr', null, head.map((x, i) => h('th', { class: i > 0 && i < 6 || i === 7 ? 'n' : '', text: x })))),
+    h('thead', null, h('tr', null, cols.map(([t, n]) => h('th', { class: n ? 'n' : '', text: t })))),
     h('tbody', null, syms.map(sym => {
       const k = sym.kennzahlen || {};
       const r4 = sym.rueckblick && sym.rueckblick['16'];
+      const v = verdict(sym);
       return h('tr', null,
-        h('td', null, h('b', { text: sym.name }), h('div', { class: 'sub', text: sym.symbol })),
+        h('td', null, h('b', { text: sym.name }), h('div', { class: 'sub', text: `${sym.symbol} · ${priceStamp(sym)}` })),
+        h('td', null, h('b', { text: `${v.glyph} ${v.label}` }), h('div', { class: 'sub', text: v.reason })),
         h('td', { class: 'n', text: nf(sym.price) }), h('td', { class: 'n ' + cls(sym.change_pct_day), text: pc(sym.change_pct_day) }),
         h('td', { class: 'n', text: sym.score == null ? '–' : nf(sym.score, 0) }),
         h('td', { text: (sym.score == null ? '' : glyphFor(sym) + ' ') + sym.label }),
@@ -379,6 +408,7 @@ function renderTiles() {
   const d = state.data, box = $('#tiles'); box.textContent = '';
   const ok = d.symbols.filter(x => !x.error || x.price != null);
   const tief = ok.filter(x => x.zone === 'tief').length, hoch = ok.filter(x => x.zone === 'hoch').length;
+  const kauf = ok.filter(x => verdict(x).code === 'kauf').length;
   const vix = d.market && d.market.vix, mood = d.news && d.news.mood;
   const fs = feeSettings();
   const vols = ok.map(x => x.kennzahlen && x.kennzahlen.schwankung_4h_pct).filter(x => x != null).sort((a, b) => a - b);
@@ -393,7 +423,7 @@ function renderTiles() {
       h('div', { class: 'cap', text: mood ? `${mood.n} Schlagzeilen, nur Stichwort-Zählung` : '' })),
     h('div', { class: 'tile' }, h('div', { class: 'lbl', text: 'ETFs in einer Zone' }),
       h('div', { class: 'val', text: `${tief} tief · ${hoch} hoch` }),
-      h('div', { class: 'cap', text: `von ${ok.length} beobachteten ETFs` })),
+      h('div', { class: 'cap', text: `von ${ok.length} beobachteten Werten · Kurzfrist-Kauf „prüfen“: ${kauf}` })),
     (() => {
       const amount = h('input', { type: 'number', min: '1', step: '1', value: String(fs.amount), 'aria-label': 'Einsatz in Euro', inputmode: 'decimal' });
       const fee = h('input', { type: 'number', min: '0', step: '0.1', value: String(fs.fee), 'aria-label': 'Gebühr pro Order in Euro', inputmode: 'decimal' });
