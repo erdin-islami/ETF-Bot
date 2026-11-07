@@ -36,6 +36,7 @@ jobs:
             git fetch --depth=1 origin gh-pages
             git show FETCH_HEAD:data.json > site/data.json.prev 2>/dev/null && mv site/data.json.prev site/data.json || rm -f site/data.json.prev
             git show FETCH_HEAD:signal_log.json > site/signal_log.json.prev 2>/dev/null && mv site/signal_log.json.prev site/signal_log.json || rm -f site/signal_log.json.prev
+            git show FETCH_HEAD:charts.json > site/charts.json.prev 2>/dev/null && mv site/charts.json.prev site/charts.json || rm -f site/charts.json.prev
           fi
 
       - uses: actions/setup-python@v5

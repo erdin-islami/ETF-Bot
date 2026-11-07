@@ -33,6 +33,8 @@ header{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-con
 .seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
 .seg button{all:unset;cursor:pointer;padding:7px 12px;font-size:13px;color:var(--ink2);min-height:32px;box-sizing:border-box}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg);font-weight:600}
+.seg.rng{max-width:100%;overflow-x:auto}
+@media (max-width:520px){ .seg.rng button{padding:7px 8px;font-size:12px} }
 .seg button:focus-visible,.ghost:focus-visible,summary:focus-visible,.chip:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .ghost{all:unset;cursor:pointer;font-size:13px;color:var(--ink2);padding:7px 10px;border-radius:8px;min-height:32px;box-sizing:border-box}
 .ghost:hover{background:var(--neutral)}
@@ -120,9 +122,13 @@ footer ul{padding-left:18px;margin:6px 0}
   </header>
 
   <div class="controls" id="controls">
-    <div class="seg" role="group" aria-label="Zeitraum der Diagramme">
+    <div class="seg rng" role="group" aria-label="Zeitraum der Diagramme">
       <button type="button" data-range="1" aria-pressed="false">1 Tag</button>
-      <button type="button" data-range="5" aria-pressed="true">5 Tage</button>
+      <button type="button" data-range="7" aria-pressed="true">7 Tage</button>
+      <button type="button" data-range="1m" aria-pressed="false">1 Monat</button>
+      <button type="button" data-range="6m" aria-pressed="false">6 Monate</button>
+      <button type="button" data-range="1y" aria-pressed="false">1 Jahr</button>
+      <button type="button" data-range="max" aria-pressed="false">Maximal</button>
     </div>
     <div class="seg" role="group" aria-label="Ansicht">
       <button type="button" data-view="cards" aria-pressed="true">Karten</button>
@@ -195,7 +201,7 @@ const fmtTime = ts => new Date(ts * 1000).toLocaleString('de-DE', { weekday: 'sh
 const fmtDateTime = ts => new Date(ts * 1000).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 /* ---------- Zustand ---------- */
-const state = { data: null, log: [], range: 5, view: 'cards', open: new Set(), theme: null, aktienFilter: null, gen: null, err: null, amount: null, fee: null };
+const state = { data: null, log: [], range: '7', charts: null, chartsGen: null, chartsBusy: false, chartsErr: null, view: 'cards', open: new Set(), theme: null, aktienFilter: null, gen: null, err: null, amount: null, fee: null };
 try { const f = JSON.parse(localStorage.getItem('etfbot.fees') || 'null'); if (f) { state.amount = f.amount; state.fee = f.fee; } } catch (e) { /* ohne Speicher weiter */ }
 
 const ZONE = {
@@ -218,19 +224,64 @@ const marketOpen = sym => sym.session_start && sym.session_end && nowSec() >= sy
 
 /* ---------- Diagramm ---------- */
 let chartSeq = 0;
+const RANGES = {
+  '1': { aria: 'letzter Handelstag', intraday: true },
+  '7': { aria: 'letzte 7 Tage', intraday: true, note: 'in den letzten 7 Tagen' },
+  '1m': { aria: 'letzter Monat', key: '1m', hourly: true, note: 'im letzten Monat' },
+  '6m': { aria: 'letzte 6 Monate', key: '6m', note: 'in den letzten 6 Monaten' },
+  '1y': { aria: 'letztes Jahr', key: '1y', note: 'im letzten Jahr' },
+  'max': { aria: 'gesamter Verlauf', key: 'max', weekly: true, note: 'seit Beginn der Aufzeichnung' },
+};
+const isLong = r => !RANGES[r].intraday;
+const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const ymd = (ts, off) => { const d = new Date((ts + off) * 1000); return { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate(), wd: d.getUTCDay() }; };
+const fmtDay = ts => new Date(ts * 1000).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 function pickIdx(t, off, days) {
   const dk = t.map(x => Math.floor((x + off) / 86400));
   const uniq = [...new Set(dk)];
   const first = uniq[Math.max(0, uniq.length - days)];
   const idx = []; dk.forEach((d, i) => { if (d >= first) idx.push(i); });
-  return { idx, dk };
+  return idx;
 }
-function drawChart(host, sym, days) {
+function rangeSeries(sym, range) {
+  const R = RANGES[range], off = sym.gmtoffset || 0;
+  if (R.intraday) {
+    const ser = sym.series;
+    if (!ser || !ser.t || ser.t.length < 3) return null;
+    let idx;
+    if (range === '1') idx = pickIdx(ser.t, off, 1);
+    else { const cut = ser.t[ser.t.length - 1] - 7 * 86400; idx = []; ser.t.forEach((x, i) => { if (x >= cut) idx.push(i); }); }
+    return { ser, idx };
+  }
+  const lc = state.charts && state.charts[sym.symbol] && state.charts[sym.symbol][R.key];
+  if (!lc || !lc.t || lc.t.length < 3) return null;
+  return { ser: { t: lc.t, c: lc.c, u: [], l: [], rsi: [] }, idx: lc.t.map((_, i) => i) };
+}
+/* Beschriftungen der Zeitachse bei langen Zeitraeumen: [{ k: Position, label }] */
+function longTicks(ser, idx, off, range) {
+  const dates = idx.map(i => ymd(ser.t[i], off));
+  const cand = [];
+  for (let k = 1; k < dates.length; k++) {
+    const a = dates[k - 1], b = dates[k];
+    if (range === '1m') { if (b.d !== a.d && b.wd === 1) cand.push({ k, label: `${b.d}.${b.m + 1}.` }); }
+    else if (range === 'max') { if (b.y !== a.y) cand.push({ k, label: String(b.y) }); }
+    else if (b.m !== a.m) cand.push({ k, label: MONTHS[b.m] });
+  }
+  const step = range === 'max' ? Math.max(1, Math.ceil(cand.length / 5)) : range === '1y' ? 2 : 1;
+  return cand.filter((_, n) => n % step === 0);
+}
+function drawChart(host, sym, range) {
   host.textContent = '';
-  const ser = sym.series;
-  if (!ser || !ser.t || ser.t.length < 3) { host.append(h('div', { class: 'empty', text: 'Kein Kursverlauf vorhanden.' })); return; }
+  const R = RANGES[range], off = sym.gmtoffset || 0;
+  const pick = rangeSeries(sym, range);
+  if (!pick) {
+    let msg = 'Kein Kursverlauf vorhanden.';
+    if (isLong(range)) msg = state.chartsErr ? 'Der längere Verlauf konnte nicht geladen werden.' : state.charts ? 'Für diesen Zeitraum liegen keine Daten vor.' : 'Verlauf wird geladen …';
+    host.append(h('div', { class: 'empty', text: msg })); return;
+  }
+  const { ser, idx } = pick;
+  const dk = ser.t.map(x => Math.floor((x + off) / 86400));
   const W = Math.max(260, host.clientWidth || 320), H = 150, m = { l: 6, r: 50, t: 8, b: 20 };
-  const { idx, dk } = pickIdx(ser.t, sym.gmtoffset || 0, days);
   const N = idx.length;
   const c = idx.map(i => ser.c[i]);
   let lo = Math.min(...c), hi = Math.max(...c);
@@ -239,24 +290,35 @@ function drawChart(host, sym, days) {
   const Y = v => m.t + (H - m.t - m.b) * (1 - (v - lo) / (hi - lo));
   const id = 'clip' + (++chartSeq);
   const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', tabindex: '0',
-    'aria-label': `Kursverlauf ${sym.name}, ${days === 1 ? 'letzter Handelstag' : 'letzte 5 Handelstage'}. Letzter Kurs ${nf(c[N - 1])}. Mit Pfeiltasten durch die Werte gehen.` });
+    'aria-label': `Kursverlauf ${sym.name}, ${R.aria}. Letzter Kurs ${nf(c[N - 1])}. Mit Pfeiltasten durch die Werte gehen.` });
   svg.append(s('defs', null, s('clipPath', { id }, s('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b }))));
   for (const f of [0.15, 0.5, 0.85]) {
     const v = lo + (hi - lo) * f, y = Y(v);
     svg.append(s('line', { class: 'gl', x1: m.l, x2: W - m.r, y1: y, y2: y }));
     svg.append(s('text', { class: 'tk', x: W - m.r + 6, y: y + 3, text: nf(v, v > 100 ? 1 : 2) }));
   }
-  // Tagestrenner und Wochentag
-  let startK = 0;
-  for (let k = 1; k <= N; k++) {
-    if (k === N || dk[idx[k]] !== dk[idx[k - 1]]) {
-      if (startK > 0) svg.append(s('line', { class: 'dsep', x1: X(startK), x2: X(startK), y1: m.t, y2: H - m.b }));
-      const label = new Date(ser.t[idx[startK]] * 1000).toLocaleDateString('de-DE', { weekday: 'short' });
-      svg.append(s('text', { class: 'tk', x: X(startK) + 4, y: H - 6, text: label }));
-      startK = k;
+  // Zeitachse: bei kurzen Zeitraeumen Tagestrenner mit Wochentag, sonst Monate bzw. Jahre
+  if (R.intraday) {
+    let startK = 0;
+    for (let k = 1; k <= N; k++) {
+      if (k === N || dk[idx[k]] !== dk[idx[k - 1]]) {
+        if (startK > 0) svg.append(s('line', { class: 'dsep', x1: X(startK), x2: X(startK), y1: m.t, y2: H - m.b }));
+        const label = new Date(ser.t[idx[startK]] * 1000).toLocaleDateString('de-DE', { weekday: 'short' });
+        svg.append(s('text', { class: 'tk', x: X(startK) + 4, y: H - 6, text: label }));
+        startK = k;
+      }
+    }
+  } else {
+    let lastX = -99;
+    for (const tk of longTicks(ser, idx, off, range)) {
+      const x = X(tk.k);
+      if (x - lastX < 34) continue;
+      lastX = x;
+      svg.append(s('line', { class: 'dsep', x1: x, x2: x, y1: m.t, y2: H - m.b }));
+      svg.append(s('text', { class: 'tk', x: x + 4, y: H - 6, text: tk.label }));
     }
   }
-  // Bollinger-Band als zarte Flaeche
+  // Bollinger-Band als zarte Flaeche (nur bei den 15-Minuten-Kerzen vorhanden)
   const top = [], bot = [];
   idx.forEach((i, k) => { if (ser.u[i] != null && ser.l[i] != null) { top.push(`${X(k)},${Y(ser.u[i])}`); bot.push(`${X(k)},${Y(ser.l[i])}`); } });
   if (top.length > 2) svg.append(s('polygon', { class: 'band', points: top.concat(bot.reverse()).join(' '), 'clip-path': `url(#${id})` }));
@@ -268,6 +330,11 @@ function drawChart(host, sym, days) {
   svg.append(cross, hdot);
   const tip = h('div', { class: 'tip', 'aria-hidden': 'true' });
   host.append(svg, tip);
+  if (range !== '1') {
+    const chg = c[0] ? (c[N - 1] / c[0] - 1) * 100 : null;
+    host.append(h('div', { class: 'sub', style: { marginTop: '2px' } }, `Veränderung ${R.note}: `, h('b', { class: cls(chg), text: pc(chg) })));
+  }
+  const stamp = ts => R.intraday ? fmtTime(ts) : R.hourly ? fmtDateTime(ts) : R.weekly ? 'Woche ab ' + fmtDay(ts) : fmtDay(ts);
   let cur = N - 1;
   function show(k) {
     k = Math.max(0, Math.min(N - 1, k)); cur = k;
@@ -275,10 +342,10 @@ function drawChart(host, sym, days) {
     cross.setAttribute('x1', x); cross.setAttribute('x2', x); cross.style.display = '';
     hdot.setAttribute('cx', x); hdot.setAttribute('cy', y); hdot.style.display = '';
     tip.textContent = '';
-    tip.append(h('div', { class: 'sub', text: fmtTime(ser.t[i]) }),
+    add(tip, [h('div', { class: 'sub', text: stamp(ser.t[i]) }),
       h('div', null, h('span', { class: 'k' }), h('b', { text: nf(ser.c[i], 3) })),
       ser.u[i] != null ? h('div', { class: 'sub', text: `Band ${nf(ser.l[i], 2)} – ${nf(ser.u[i], 2)}` }) : null,
-      ser.rsi[i] != null ? h('div', { class: 'sub', text: `RSI ${nf(ser.rsi[i], 0)}` }) : null);
+      ser.rsi[i] != null ? h('div', { class: 'sub', text: `RSI ${nf(ser.rsi[i], 0)}` }) : null]);
     tip.style.display = 'block';
     const tw = tip.offsetWidth;
     tip.style.left = Math.max(0, Math.min(W - tw, x > W / 2 ? x - tw - 12 : x + 12)) + 'px';
@@ -296,6 +363,20 @@ function drawChart(host, sym, days) {
     else if (ev.key === 'ArrowRight') { show(cur + 1); ev.preventDefault(); }
     else if (ev.key === 'Escape') hide();
   });
+}
+/* Die laengeren Verlaeufe liegen in charts.json und werden erst beim Bedarf geladen */
+async function loadCharts() {
+  const g = state.data && state.data.generated_at;
+  if (!g || state.chartsBusy || (state.charts && state.chartsGen === g)) return;
+  state.chartsBusy = true;
+  try {
+    const r = await fetch(`charts.json?g=${encodeURIComponent(g)}`);
+    if (!r.ok) throw new Error(`charts.json: HTTP ${r.status}`);
+    const j = await r.json();
+    state.charts = j.symbols || {}; state.chartsGen = g; state.chartsErr = null;
+  } catch (e) { state.chartsErr = String(e.message || e); }
+  finally { state.chartsBusy = false; }
+  drawAllCharts();
 }
 
 /* ---------- Bausteine fuer Karten ---------- */
@@ -609,7 +690,7 @@ async function load() {
     let log = state.log;
     try { const l = await getJson('signal_log.json'); log = Array.isArray(l.entries) ? l.entries : []; } catch (e) { /* Protokoll ist optional */ }
     state.err = null;
-    if (d.generated_at !== state.gen || log !== state.log) { state.data = d; state.gen = d.generated_at; state.log = log; renderAll(); }
+    if (d.generated_at !== state.gen || log !== state.log) { state.data = d; state.gen = d.generated_at; state.log = log; renderAll(); if (isLong(state.range)) loadCharts(); }
     else { renderBanners(); updateStatus(); }
   } catch (e) {
     state.err = String(e.message || e);
@@ -620,9 +701,10 @@ async function load() {
 
 /* ---------- Bedienung ---------- */
 document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => {
-  state.range = Number(b.dataset.range);
+  state.range = b.dataset.range;
   document.querySelectorAll('[data-range]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
   drawAllCharts();
+  if (isLong(state.range)) loadCharts();
 }));
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
   state.view = b.dataset.view;

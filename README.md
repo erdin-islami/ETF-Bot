@@ -31,6 +31,7 @@ python -m http.server -d docs   # Dashboard unter http://localhost:8000
 python tests/test_indicators.py # Selbsttest der Kennzahlen (braucht pandas)
 python tests/test_news.py       # Selbsttest der Nachrichten
 python tests/test_langfrist_aktien.py  # Selbsttest Langfrist, Aktien-Scan, Wechselkurs
+python tests/test_charts.py      # Selbsttest der Diagramm-Zeiträume
 ```
 
 ## Wie der Wert entsteht
@@ -68,3 +69,7 @@ Eigener Abschnitt unterhalb der ETF-Karten. Pro ETF steht dort der Abstand zum 5
 ## Bereich „Aktien: mögliche Kurzfrist-Kandidaten“
 
 Der Bot wertet bei jedem Lauf alle Aktien aus `aktien_universum` mit denselben Kennzahlen aus wie die ETFs und sortiert sie nach der Einschätzung aus „Kurzfrist-Kauf“. Die Spalte „Mindest-Einsatz“ zeigt, ab welchem Einsatz die Gebühren kleiner sind als die übliche 4-Stunden-Schwankung (2 × Gebühr ÷ Schwankung). Bei kleinen Beträgen steht deshalb fast überall „eher nicht“. Das ist beabsichtigt und ehrlich: Die Gebühren fressen den möglichen Gewinn. Schlägt Yahoo Finance bei einer Aktie fehl, bleibt der letzte Wert stehen und wird als „veraltet“ markiert.
+
+## Zeiträume der Diagramme
+
+Über den Karten stehen die Zeiträume 1 Tag, 7 Tage, 1 Monat, 6 Monate, 1 Jahr und Maximal. Bei 1 Tag und 7 Tagen sieht man die 15-Minuten-Kerzen mit Bollinger-Band. Darunter wird es gröber: 1 Monat zeigt Stundenkurse, 6 Monate und 1 Jahr Tageskurse, Maximal Wochenkurse seit dem Start des ETFs. Unter dem Diagramm steht die Veränderung im gewählten Zeitraum. Die längeren Verläufe liegen in `charts.json` und werden erst geladen, wenn du einen längeren Zeitraum anklickst. Dadurch bleibt `data.json` klein.

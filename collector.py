@@ -378,6 +378,39 @@ def langfrist(daily, price, trend):
     }
 
 
+def build_charts(t, c, off, daily):
+    """Reihen fuer die laengeren Diagramm-Zeitraeume, nur aus schon geladenen Daten."""
+    last = t[-1]
+    # 1 Monat: Kurse zur vollen Stunde (Zeit am Handelsplatz) plus der letzte Kurs
+    cut = last - 31 * 86400
+    ks = [k for k in range(len(t)) if t[k] >= cut and (t[k] + off) % 3600 == 0]
+    if not ks or ks[-1] != len(t) - 1:
+        ks.append(len(t) - 1)
+    out = {"1m": {"t": [t[k] for k in ks], "c": [rnd(c[k], 4) for k in ks]}}
+    dt, dc = daily["t"], daily["c"]
+    for key, days in (("6m", 183), ("1y", 366)):
+        cut = last - days * 86400
+        ds = [k for k in range(len(dt)) if dt[k] >= cut]
+        out[key] = {"t": [dt[k] for k in ds], "c": [rnd(dc[k], 4) for k in ds]}
+    return out
+
+
+def max_series(item, daily, demo, prev_chart):
+    """Gesamter Kursverlauf in Wochenkerzen. Bei Ausfall bleibt der letzte gute Verlauf stehen."""
+    try:
+        if demo:
+            d = {"t": daily["t"][::-5][::-1], "c": daily["c"][::-5][::-1]}
+        else:
+            d = fetch_yahoo(item["symbol"], "1wk", "max")
+            time.sleep(0.4)
+        if len(d["c"]) < 3:
+            raise RuntimeError("zu wenig Daten")
+        return {"t": d["t"], "c": [rnd(x, 4) for x in d["c"]]}
+    except Exception as exc:  # noqa: BLE001
+        print(f"Hinweis: Gesamtverlauf für {item['symbol']} fehlt ({str(exc)[:120]})", file=sys.stderr)
+        return (prev_chart or {}).get("max")
+
+
 def analyze(item, intr, daily, cfg, now_ts, with_series=True):
     t, c, h, l = intr["t"], intr["c"], intr["h"], intr["l"]
     meta = intr["meta"]
@@ -494,6 +527,7 @@ def analyze(item, intr, daily, cfg, now_ts, with_series=True):
         },
         "rueckblick": bt,
         "series": series if with_series else None,
+        "charts": build_charts(t, c, off, daily) if with_series else None,
         "langfrist": langfrist(daily, price, trend),
         "error": None,
         "stale": False,
@@ -780,6 +814,7 @@ def scan_stocks(cfg, by_sym, raw, prev_aktien, demo, now_ts, budget_s=420):
         if sym in by_sym:
             r = dict(by_sym[sym])
             r["series"] = None
+            r["charts"] = None
             r["name"], r["group"] = item["name"], item.get("group", "")
             out.append(r)
             continue
@@ -814,10 +849,13 @@ def main():
     out_dir = args.out
     data_path = os.path.join(out_dir, "data.json")
     log_path = os.path.join(out_dir, "signal_log.json")
+    charts_path = os.path.join(out_dir, "charts.json")
 
     prev = load_json(data_path, {})
     if prev.get("demo"):
         prev = {}
+    prev_charts = load_json(charts_path, {})
+    prev_charts = {} if (prev_charts.get("demo") or not isinstance(prev_charts.get("symbols"), dict)) else prev_charts["symbols"]
     log = load_json(log_path, {})
     entries = [] if (log.get("demo") or not isinstance(log.get("entries"), list)) else log["entries"]
     prev_syms = {s["symbol"]: s for s in prev.get("symbols", []) if isinstance(s, dict) and "symbol" in s}
@@ -832,6 +870,7 @@ def main():
         try:
             intr, daily = fetch_symbol(item, cfg, args.demo, idx, now_ts, cfg["daily_range"])
             res = analyze(item, intr, daily, cfg, now_ts)
+            res["charts"]["max"] = max_series(item, daily, args.demo, prev_charts.get(item["symbol"]))
             raw[item["symbol"]] = (intr["t"], intr["c"], res["gmtoffset"])
             symbols.append(res)
             ok_count += 1
@@ -849,6 +888,12 @@ def main():
                 symbols.append({"symbol": item["symbol"], "name": item["name"], "group": item.get("group", ""),
                                 "error": msg, "stale": False, "zone": None, "label": "Keine Daten", "score": None})
 
+    # Die laengeren Verlaeufe kommen in eine eigene Datei, damit data.json klein bleibt
+    charts = {}
+    for res in symbols:
+        ch = res.pop("charts", None) or prev_charts.get(res["symbol"])
+        if ch:
+            charts[res["symbol"]] = ch
     by_sym = {s["symbol"]: s for s in symbols if s.get("price") is not None}
     aktien, aktien_err = scan_stocks(cfg, by_sym, raw, prev_aktien, args.demo, now_ts)
     print(f"Aktien: {len(aktien)} von {len(cfg.get('aktien_universum', []))} ausgewertet, {aktien_err} Fehler")
@@ -906,7 +951,10 @@ def main():
         "aktien_status": {"gesamt": len(cfg.get("aktien_universum", [])), "ausgewertet": len(aktien), "fehler": aktien_err},
         "news": news,
     }
+    for res in aktien:
+        res.pop("charts", None)
     write_json(data_path, result)
+    write_json(charts_path, {"generated_at": iso(now_ts), "demo": bool(args.demo), "symbols": charts})
     write_json(log_path, {"demo": bool(args.demo), "entries": entries})
     print(f"Fertig: {ok_count}/{len(cfg['watchlist'])} ETFs, {len(aktien)} Aktien, {len(news['items'])} Meldungen -> {data_path}")
 
