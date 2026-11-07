@@ -47,7 +47,7 @@
     16
   ],
   "news_max_age_hours": 48,
-  "news_max_items": 40,
+  "news_max_items": 80,
   "news_feeds": [
     {
       "name": "Börse & Märkte",
@@ -72,6 +72,34 @@
     {
       "name": "Yahoo Finance",
       "url": "https://finance.yahoo.com/news/rssindex"
+    },
+    {
+      "name": "Politik & Wirtschaft",
+      "url": "https://news.google.com/rss/search?q=Bundesregierung+OR+Bundestag+OR+Haushalt+OR+Steuern+OR+Subventionen+Wirtschaft+when:1d&hl=de&gl=DE&ceid=DE:de"
+    },
+    {
+      "name": "US-Politik & Märkte",
+      "url": "https://news.google.com/rss/search?q=Trump+OR+%22Wei%C3%9Fes+Haus%22+OR+Kongress+OR+Haushaltsstreit+B%C3%B6rse+OR+Aktien+OR+Wirtschaft+when:1d&hl=de&gl=DE&ceid=DE:de"
+    },
+    {
+      "name": "Exportkontrollen & Chips",
+      "url": "https://news.google.com/rss/search?q=Exportkontrollen+OR+Chipverbot+OR+%22Seltene+Erden%22+OR+%22Nvidia+China%22+OR+Halbleiter+when:2d&hl=de&gl=DE&ceid=DE:de"
+    },
+    {
+      "name": "Rüstung & Verteidigung",
+      "url": "https://news.google.com/rss/search?q=R%C3%BCstung+OR+Verteidigungshaushalt+OR+Rheinmetall+OR+Bundeswehr+OR+Nato+when:2d&hl=de&gl=DE&ceid=DE:de"
+    },
+    {
+      "name": "Regulierung & Kartellrecht",
+      "url": "https://news.google.com/rss/search?q=Kartellverfahren+OR+Kartellamt+OR+%22EU-Kommission%22+Strafe+OR+Regulierung+Tech-Konzerne+when:2d&hl=de&gl=DE&ceid=DE:de"
+    },
+    {
+      "name": "Tagesschau Inland",
+      "url": "https://www.tagesschau.de/inland/index~rss2.xml"
+    },
+    {
+      "name": "Tagesschau Ausland",
+      "url": "https://www.tagesschau.de/ausland/index~rss2.xml"
     }
   ],
   "fx_symbol": "EURUSD=X",
@@ -81,112 +109,187 @@
     {
       "symbol": "NVDA",
       "name": "NVIDIA",
-      "group": "US-Tech"
+      "group": "US-Tech",
+      "stichworte": [
+        "nvidia"
+      ]
     },
     {
       "symbol": "AAPL",
       "name": "Apple",
-      "group": "US-Tech"
+      "group": "US-Tech",
+      "stichworte": [
+        "apple",
+        "iphone"
+      ]
     },
     {
       "symbol": "MSFT",
       "name": "Microsoft",
-      "group": "US-Tech"
+      "group": "US-Tech",
+      "stichworte": [
+        "microsoft"
+      ]
     },
     {
       "symbol": "AMZN",
       "name": "Amazon",
-      "group": "US-Tech"
+      "group": "US-Tech",
+      "stichworte": [
+        "amazon"
+      ]
     },
     {
       "symbol": "GOOGL",
       "name": "Alphabet (Google)",
-      "group": "US-Tech"
+      "group": "US-Tech",
+      "stichworte": [
+        "alphabet",
+        "google"
+      ]
     },
     {
       "symbol": "META",
       "name": "Meta Platforms",
-      "group": "US-Tech"
+      "group": "US-Tech",
+      "stichworte": [
+        "meta platforms",
+        "meta",
+        "facebook",
+        "instagram"
+      ]
     },
     {
       "symbol": "TSLA",
       "name": "Tesla",
-      "group": "US-Auto"
+      "group": "US-Auto",
+      "stichworte": [
+        "tesla"
+      ]
     },
     {
       "symbol": "AVGO",
       "name": "Broadcom",
-      "group": "US-Chips"
+      "group": "US-Chips",
+      "stichworte": [
+        "broadcom"
+      ]
     },
     {
       "symbol": "AMD",
       "name": "AMD",
-      "group": "US-Chips"
+      "group": "US-Chips",
+      "stichworte": [
+        "amd",
+        "advanced micro devices"
+      ]
     },
     {
       "symbol": "MU",
       "name": "Micron",
-      "group": "US-Chips"
+      "group": "US-Chips",
+      "stichworte": [
+        "micron"
+      ]
     },
     {
       "symbol": "INTC",
       "name": "Intel",
-      "group": "US-Chips"
+      "group": "US-Chips",
+      "stichworte": [
+        "intel"
+      ]
     },
     {
       "symbol": "NFLX",
       "name": "Netflix",
-      "group": "US-Medien"
+      "group": "US-Medien",
+      "stichworte": [
+        "netflix"
+      ]
     },
     {
       "symbol": "PLTR",
       "name": "Palantir",
-      "group": "US-Software"
+      "group": "US-Software",
+      "stichworte": [
+        "palantir"
+      ]
     },
     {
       "symbol": "ORCL",
       "name": "Oracle",
-      "group": "US-Software"
+      "group": "US-Software",
+      "stichworte": [
+        "oracle"
+      ]
     },
     {
       "symbol": "ADBE",
       "name": "Adobe",
-      "group": "US-Software"
+      "group": "US-Software",
+      "stichworte": [
+        "adobe"
+      ]
     },
     {
       "symbol": "JPM",
       "name": "JPMorgan",
-      "group": "US-Banken"
+      "group": "US-Banken",
+      "stichworte": [
+        "jpmorgan",
+        "jp morgan"
+      ]
     },
     {
       "symbol": "SAP.DE",
       "name": "SAP",
-      "group": "Deutschland"
+      "group": "Deutschland",
+      "stichworte": [
+        "sap"
+      ]
     },
     {
       "symbol": "SIE.DE",
       "name": "Siemens",
-      "group": "Deutschland"
+      "group": "Deutschland",
+      "stichworte": [
+        "siemens"
+      ]
     },
     {
       "symbol": "ALV.DE",
       "name": "Allianz",
-      "group": "Deutschland"
+      "group": "Deutschland",
+      "stichworte": [
+        "allianz"
+      ]
     },
     {
       "symbol": "RHM.DE",
       "name": "Rheinmetall",
-      "group": "Deutschland"
+      "group": "Deutschland",
+      "stichworte": [
+        "rheinmetall"
+      ]
     },
     {
       "symbol": "MBG.DE",
       "name": "Mercedes-Benz",
-      "group": "Deutschland"
+      "group": "Deutschland",
+      "stichworte": [
+        "mercedes",
+        "mercedes-benz"
+      ]
     },
     {
       "symbol": "DBK.DE",
       "name": "Deutsche Bank",
-      "group": "Deutschland"
+      "group": "Deutschland",
+      "stichworte": [
+        "deutsche bank"
+      ]
     }
-  ]
+  ],
+  "_news_hinweis": "stichworte bei den Aktien: Schlagzeilen mit diesen Wörtern werden der Aktie zugeordnet. news_feeds: weitere RSS-Quellen kannst du einfach ergänzen."
 }

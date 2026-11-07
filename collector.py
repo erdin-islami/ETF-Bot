@@ -544,19 +544,41 @@ NEG = [
     "krise", "pleite", "insolvenz", "herabgestuft", "warnt", "warnung", "shutdown", "zinserhöhung", "schwäche",
     "plunge", "selloff", "sell-off", "slump", "tumble", "fears", "recession", "tariff", "attack", "escalat",
     "sanctions", "downgrade", "warns", "crisis", "bankrupt", "layoff", "default", "losses", "worst",
+    "exportkontroll", "embargo", "verbot", "strafe", "haushaltsstreit", "kartellverfahren", "export control",
 ]
 POS = [
     "rekord", "rally", "erholung", "gewinne", "aufschwung", "zinssenkung", "einigung", "waffenruhe",
     "entspannung", "kursplus", "hochgestuft", "übertrifft", "erholt", "surge", "record", "rebound", "soar",
     "jump", "gains", "rate cut", "cuts rates", "deal", "beats", "upgrade", "ceasefire", "easing", "optimis",
+    "steuersenkung", "entlastung", "konjunkturpaket", "großauftrag", "milliardenauftrag",
 ]
 THEMES = {
     "Zinsen & Notenbanken": ["zins*", "fed", "ezb", "notenbank*", "powell", "lagarde", "inflation*", "rate cut", "interest rate*"],
-    "Handel & Zölle": ["zoll*", "zölle", "tariff*", "handelskrieg*", "trade war", "sanktion*", "sanctions"],
-    "Geopolitik": ["krieg*", "war", "ukraine", "russland", "russia", "iran", "israel", "gaza", "nahost", "taiwan", "nato", "angriff*", "attack*", "ceasefire", "waffenruhe*"],
+    "Handel & Zölle": ["zoll*", "zölle*", "tariff*", "handelskrieg*", "trade war", "sanktion*", "sanctions"],
+    "Geopolitik": ["krieg*", "war", "ukraine", "russland", "russia", "iran", "israel", "gaza", "nahost", "nahen osten", "naher osten", "middle east", "taiwan", "nato", "angriff*", "attack*", "ceasefire", "waffenruhe*"],
     "Konjunktur": ["konjunktur*", "rezession*", "recession", "arbeitsmarkt*", "jobs", "bip", "gdp", "pmi", "verbraucher*", "unemployment"],
     "Tech & KI": ["nvidia", "ki", "künstliche intelligenz", "ai", "chip*", "apple", "microsoft", "tesla", "alphabet", "amazon", "openai", "halbleiter*"],
     "Rohstoffe": ["öl", "ölpreis*", "oil", "gold", "goldpreis*", "opec", "gas", "erdgas", "energie*", "energy"],
+    "Politik & Regulierung": ["regier*", "wahl*", "wähler*", "koalition*", "kongress", "congress", "senat", "weißes haus", "white house",
+                              "trump", "haushalt*", "schuldenbremse", "steuer*", "subvention*", "gesetz*", "regulier*", "regulat*",
+                              "kartell*", "antitrust", "verbot*", "bundestag", "parlament*", "präsident*", "election*", "shutdown"],
+    "Exportkontrollen & China": ["exportkontroll*", "export control*", "exportverbot*", "embargo*", "china", "chinesisch*", "peking",
+                                 "beijing", "seltene erden", "rare earth*", "chipverbot*", "huawei"],
+    "Rüstung & Verteidigung": ["rüstung*", "verteidigung*", "bundeswehr", "defense", "defence", "nato", "militär*",
+                               "waffenlieferung*", "drohne*", "rheinmetall"],
+}
+
+# Welche Werte ein Thema betreffen koennte (grobe Faustregel, keine Prognose)
+THEME_WERTE = {
+    "Handel & Zölle": (["TSLA", "MBG.DE", "SIE.DE", "AAPL", "NVDA", "AMD", "AVGO", "MU", "INTC"],
+                       "Zölle treffen vor allem Autobauer sowie Chip- und Elektronikkonzerne mit weltweiten Lieferketten."),
+    "Exportkontrollen & China": (["NVDA", "AMD", "AVGO", "MU", "INTC", "AAPL", "TSLA"],
+                                 "Exportregeln und der China-Handel betreffen vor allem Chipfirmen und Konzerne mit großem China-Geschäft."),
+    "Rüstung & Verteidigung": (["RHM.DE", "PLTR"], "Höhere Verteidigungsausgaben kommen vor allem Rüstungsfirmen zugute."),
+    "Zinsen & Notenbanken": (["JPM", "DBK.DE", "ALV.DE"], "Zinsen beeinflussen die Erträge von Banken und Versicherern."),
+    "Politik & Regulierung": (["GOOGL", "META", "AMZN", "MSFT", "AAPL", "JPM", "DBK.DE"],
+                              "Regulierung und Kartellrecht betreffen vor allem Tech-Giganten und Banken."),
+    "Geopolitik": (["RHM.DE"], "Konflikte und Spannungen wirken oft auf Rüstungswerte."),
 }
 _NEG_RE = [re.compile(r"\b" + re.escape(w), re.I) for w in NEG]
 _POS_RE = [re.compile(r"\b" + re.escape(w), re.I) for w in POS]
@@ -580,6 +602,37 @@ def headline_sentiment(title):
 
 def headline_themes(title):
     return [k for k, r in _THEME_RE.items() if r.search(title)]
+
+
+def known_symbols(cfg):
+    return {x["symbol"] for x in list(cfg.get("aktien_universum", [])) + list(cfg.get("watchlist", []))}
+
+
+def company_patterns(cfg):
+    """Kuerzel -> Regex aus den 'stichworte' von Aktien und Watchlist (ganze Woerter, Gross/Klein egal)."""
+    pats = {}
+    for x in list(cfg.get("aktien_universum", [])) + list(cfg.get("watchlist", [])):
+        words = x.get("stichworte")
+        if words:
+            pats[x["symbol"]] = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in words) + r")\b", re.I)
+    return pats
+
+
+def tag_item(it, pats, known):
+    """werte = in der Schlagzeile genannt; werte_thema = koennte ueber das Thema betroffen sein."""
+    genannt = [sym for sym, r in pats.items() if r.search(it["title"])]
+    thema = []
+    for th in it.get("themes", []):
+        for sym in THEME_WERTE.get(th, ([], ""))[0]:
+            if sym in known and sym not in genannt and sym not in thema:
+                thema.append(sym)
+    it["werte"] = genannt
+    it["werte_thema"] = thema
+
+
+def themen_info(cfg):
+    known = known_symbols(cfg)
+    return {th: {"werte": [x for x in w if x in known], "warum": why} for th, (w, why) in THEME_WERTE.items()}
 
 
 def clean_text(s):
@@ -625,6 +678,7 @@ def fetch_news(cfg, now_ts):
         except Exception as exc:  # noqa: BLE001
             feeds.append({"name": feed["name"], "ok": False, "n": 0, "error": str(exc)[:120]})
     max_age = cfg["news_max_age_hours"] * 3600
+    pats, known = company_patterns(cfg), known_symbols(cfg)
     seen, out = set(), []
     for it in sorted(collected, key=lambda x: -x["ts"]):
         if now_ts - it["ts"] > max_age or it["ts"] > now_ts + 3600:
@@ -635,6 +689,7 @@ def fetch_news(cfg, now_ts):
         seen.add(key)
         it["sentiment"] = headline_sentiment(it["title"])
         it["themes"] = headline_themes(it["title"])
+        tag_item(it, pats, known)
         out.append(it)
     out = out[: cfg["news_max_items"]]
     recent = [x["sentiment"] for x in out if now_ts - x["ts"] <= 24 * 3600]
@@ -647,7 +702,16 @@ def fetch_news(cfg, now_ts):
     for x in out:
         for th in x["themes"]:
             theme_count[th] = theme_count.get(th, 0) + 1
-    return {"items": out, "mood": mood, "themes": theme_count, "feeds": feeds}
+    return {"items": out, "mood": mood, "themes": theme_count, "feeds": feeds, "themen_info": themen_info(cfg)}
+
+
+def build_news_doc(cfg, demo, now_ts, prev_doc):
+    """Inhalt von news.json. Faellt jede Quelle aus, bleibt der letzte gute Stand stehen."""
+    news = demo_news(now_ts, cfg) if demo else fetch_news(cfg, now_ts)
+    old = (prev_doc or {}).get("news") or {}
+    if not demo and not news["items"] and old.get("items"):
+        news = dict(old, feeds=news["feeds"], themen_info=news["themen_info"])
+    return {"generated_at": iso(now_ts), "demo": bool(demo), "news": news}
 
 
 # --------------------------------------------------------------------------
@@ -749,19 +813,29 @@ def demo_data(item, index, now_ts):
     return intr, daily
 
 
-def demo_news(now_ts):
-    base = [
-        ("Beispiel: Notenbank signalisiert Zinspause, Märkte reagieren gelassen", 0.0, ["Zinsen & Notenbanken"]),
-        ("Beispiel: Neue Zölle belasten Technologiewerte", -0.5, ["Handel & Zölle", "Tech & KI"]),
-        ("Beispiel: Rekordstände an der Wall Street nach starken Unternehmenszahlen", 0.7, ["Tech & KI"]),
-        ("Beispiel: Spannungen im Nahen Osten treiben den Ölpreis", -0.6, ["Geopolitik", "Rohstoffe"]),
-        ("Beispiel: Konjunkturdaten fallen besser aus als erwartet", 0.5, ["Konjunktur"]),
+def demo_news(now_ts, cfg):
+    titles = [
+        "Beispiel: Notenbank signalisiert Zinspause, Märkte reagieren gelassen",
+        "Beispiel: Neue Zölle belasten Autobauer und Technologiewerte",
+        "Beispiel: Nvidia warnt vor strengeren Exportkontrollen für China",
+        "Beispiel: Bundestag beschließt höhere Verteidigungsausgaben, Rheinmetall im Plus",
+        "Beispiel: EU-Kommission eröffnet Kartellverfahren gegen Tech-Konzerne",
+        "Beispiel: Spannungen im Nahen Osten treiben den Ölpreis",
+        "Beispiel: Konjunkturdaten fallen besser aus als erwartet",
     ]
-    items = [{"title": t, "url": "", "source": "Demo", "ts": now_ts - 1800 * (i + 1), "feed": "Demo",
-              "sentiment": s, "themes": th} for i, (t, s, th) in enumerate(base)]
-    return {"items": items, "mood": {"n": 5, "score": 0.1, "label": "neutral"},
-            "themes": {"Tech & KI": 2, "Zinsen & Notenbanken": 1, "Handel & Zölle": 1, "Geopolitik": 1, "Rohstoffe": 1, "Konjunktur": 1},
-            "feeds": [{"name": "Demo", "ok": True, "n": 5}]}
+    pats, known = company_patterns(cfg), known_symbols(cfg)
+    items = []
+    for i, t in enumerate(titles):
+        it = {"title": t, "url": "", "source": "Demo", "ts": now_ts - 1800 * (i + 1), "feed": "Demo",
+              "sentiment": headline_sentiment(t), "themes": headline_themes(t)}
+        tag_item(it, pats, known)
+        items.append(it)
+    theme_count = {}
+    for it in items:
+        for th in it["themes"]:
+            theme_count[th] = theme_count.get(th, 0) + 1
+    return {"items": items, "mood": {"n": len(items), "score": 0.0, "label": "neutral"}, "themes": theme_count,
+            "feeds": [{"name": "Demo", "ok": True, "n": len(items)}], "themen_info": themen_info(cfg)}
 
 
 # --------------------------------------------------------------------------
@@ -841,6 +915,7 @@ def main():
     ap = argparse.ArgumentParser(description="ETF-Bot Datensammler")
     ap.add_argument("--demo", action="store_true", help="Beispieldaten statt echter Kurse")
     ap.add_argument("--out", default=os.path.join(ROOT, "docs"), help="Ausgabeordner")
+    ap.add_argument("--news-only", action="store_true", help="Nur die Nachrichten (news.json) aktualisieren")
     args = ap.parse_args()
 
     cfg = load_json(os.path.join(ROOT, "config.json"), None)
@@ -850,6 +925,21 @@ def main():
     data_path = os.path.join(out_dir, "data.json")
     log_path = os.path.join(out_dir, "signal_log.json")
     charts_path = os.path.join(out_dir, "charts.json")
+    news_path = os.path.join(out_dir, "news.json")
+
+    prev_news = load_json(news_path, {})
+    if prev_news.get("demo"):
+        prev_news = {}
+    if args.news_only:
+        now_ts = int(time.time())
+        doc = build_news_doc(cfg, args.demo, now_ts, prev_news)
+        write_json(news_path, doc)
+        feeds = doc["news"].get("feeds", [])
+        print(f"Nachrichten: {len(doc['news']['items'])} Meldungen, Quellen ok {sum(1 for f in feeds if f['ok'])}/{len(feeds)} -> {news_path}")
+        for f in feeds:
+            if not f["ok"]:
+                print(f"Hinweis: Quelle '{f['name']}' nicht erreichbar ({f.get('error', '')})", file=sys.stderr)
+        return
 
     prev = load_json(data_path, {})
     if prev.get("demo"):
@@ -908,14 +998,11 @@ def main():
         elif res.get("currency") == "USD" and fx:
             res["price_eur"] = rnd(res["price"] / fx, 2)
 
-    news = demo_news(now_ts) if args.demo else fetch_news(cfg, now_ts)
+    news_doc = build_news_doc(cfg, args.demo, now_ts, prev_news)
+    news = news_doc["news"]
     market = {"vix": vix_info(cfg, args.demo, now_ts)}
     # Bei Ausfall nicht leer ueberschreiben, sondern die letzten guten Werte behalten
     if not args.demo:
-        if not news["items"] and prev.get("news", {}).get("items"):
-            keep = dict(prev["news"])
-            keep["feeds"] = news["feeds"]
-            news = keep
         old_vix = prev.get("market", {}).get("vix", {})
         if market["vix"].get("value") is None and old_vix.get("value") is not None:
             market["vix"] = dict(old_vix, stale=True)
@@ -949,11 +1036,11 @@ def main():
         "symbols": symbols,
         "aktien": aktien,
         "aktien_status": {"gesamt": len(cfg.get("aktien_universum", [])), "ausgewertet": len(aktien), "fehler": aktien_err},
-        "news": news,
     }
     for res in aktien:
         res.pop("charts", None)
     write_json(data_path, result)
+    write_json(news_path, news_doc)
     write_json(charts_path, {"generated_at": iso(now_ts), "demo": bool(args.demo), "symbols": charts})
     write_json(log_path, {"demo": bool(args.demo), "entries": entries})
     print(f"Fertig: {ok_count}/{len(cfg['watchlist'])} ETFs, {len(aktien)} Aktien, {len(news['items'])} Meldungen -> {data_path}")

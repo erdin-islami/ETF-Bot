@@ -32,6 +32,7 @@ python tests/test_indicators.py # Selbsttest der Kennzahlen (braucht pandas)
 python tests/test_news.py       # Selbsttest der Nachrichten
 python tests/test_langfrist_aktien.py  # Selbsttest Langfrist, Aktien-Scan, Wechselkurs
 python tests/test_charts.py      # Selbsttest der Diagramm-Zeiträume
+python tests/test_politik.py     # Selbsttest Politik-Themen und Aktien-Zuordnung
 ```
 
 ## Wie der Wert entsteht
@@ -73,3 +74,11 @@ Der Bot wertet bei jedem Lauf alle Aktien aus `aktien_universum` mit denselben K
 ## Zeiträume der Diagramme
 
 Über den Karten stehen die Zeiträume 1 Tag, 7 Tage, 1 Monat, 6 Monate, 1 Jahr und Maximal. Bei 1 Tag und 7 Tagen sieht man die 15-Minuten-Kerzen mit Bollinger-Band. Darunter wird es gröber: 1 Monat zeigt Stundenkurse, 6 Monate und 1 Jahr Tageskurse, Maximal grobe Kurse (Yahoo liefert hier Monatskurse) seit dem Start des ETFs. Unter dem Diagramm steht die Veränderung im gewählten Zeitraum. Die längeren Verläufe liegen in `charts.json` und werden erst geladen, wenn du einen längeren Zeitraum anklickst. Dadurch bleibt `data.json` klein.
+
+## Nachrichten, Politik und Aktien
+
+- **Alle 10 Minuten, rund um die Uhr:** Der Workflow `news.yml` holt nur die Schlagzeilen und schreibt sie nach `news.json`. Kurse und Berechnungen bleiben dabei unberührt, die kommen weiter alle 15 Minuten aus `update.yml`. GitHub startet geplante Läufe nicht sekundengenau, ein paar Minuten Verzug sind normal. Wie neu die Meldungen sind, steht im Dashboard über der Liste.
+- **Politische Quellen und Themen:** Zusätzlich zu Börse und Notenbanken sucht der Bot nach Politik und Wirtschaft, US-Politik, Exportkontrollen und Chips, Rüstung und Verteidigung, Regulierung und Kartellrecht sowie Tagesschau Inland und Ausland. Daraus entstehen die Themen „Politik & Regulierung“, „Exportkontrollen & China“ und „Rüstung & Verteidigung“ (neben Zinsen, Zölle, Geopolitik und so weiter).
+- **Bezug zu Aktien:** Steht der Name einer Aktie in der Schlagzeile, heißt das „Genannt“. Die Namen stehen in `config.json` bei `stichworte`. „Könnte betreffen“ ist eine grobe Faustregel nach Thema (zum Beispiel Zölle → Autobauer und Chipfirmen) und steht im Code unter `THEME_WERTE`. Das ist keine Prognose. In der Aktien-Tabelle zeigt die Spalte „Meldungen“, wie viele Meldungen es zu einer Aktie gibt. Ein Klick filtert die Nachrichten darauf.
+- **Grenzen:** Die Stimmung einer Schlagzeile ist reine Stichwort-Zählung. Ob eine Meldung den Kurs wirklich bewegt, kann der Bot nicht wissen.
+- **Hinweis zu GitHub:** In öffentlichen Repositories schaltet GitHub geplante Workflows ab, wenn 60 Tage lang nichts im Repository passiert. Falls die Seite einmal nicht mehr aktualisiert, unter „Actions“ nachsehen und die Workflows wieder aktivieren.

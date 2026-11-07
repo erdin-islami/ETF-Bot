@@ -99,6 +99,9 @@ td.n .sub{white-space:nowrap}
 .news a{color:var(--ink);text-decoration:none;font-weight:550}
 .news a:hover{text-decoration:underline}
 .news .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.news .wert{font-size:12px;color:var(--ink2);margin-top:3px}
+.lk{all:unset;cursor:pointer;font-size:inherit;text-decoration:underline dotted;text-underline-offset:3px;color:inherit}
+.lk:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .sent{font-size:12px;font-weight:600;margin-right:6px}
 .sent.p{color:var(--pos)} .sent.m{color:var(--neg)} .sent.o{color:var(--muted)}
 footer{margin-top:28px;font-size:13px;color:var(--ink2)}
@@ -201,7 +204,7 @@ const fmtTime = ts => new Date(ts * 1000).toLocaleString('de-DE', { weekday: 'sh
 const fmtDateTime = ts => new Date(ts * 1000).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 /* ---------- Zustand ---------- */
-const state = { data: null, log: [], range: '7', charts: null, chartsGen: null, chartsBusy: false, chartsErr: null, view: 'cards', open: new Set(), theme: null, aktienFilter: null, gen: null, err: null, amount: null, fee: null };
+const state = { data: null, log: [], range: '7', news: null, newsSym: null, logKey: '', charts: null, chartsGen: null, chartsBusy: false, chartsErr: null, view: 'cards', open: new Set(), theme: null, aktienFilter: null, gen: null, err: null, amount: null, fee: null };
 try { const f = JSON.parse(localStorage.getItem('etfbot.fees') || 'null'); if (f) { state.amount = f.amount; state.fee = f.fee; } } catch (e) { /* ohne Speicher weiter */ }
 
 const ZONE = {
@@ -499,7 +502,7 @@ function renderTiles() {
   const ok = d.symbols.filter(x => !x.error || x.price != null);
   const tief = ok.filter(x => x.zone === 'tief').length, hoch = ok.filter(x => x.zone === 'hoch').length;
   const kauf = ok.filter(x => verdict(x).code === 'kauf').length;
-  const vix = d.market && d.market.vix, mood = d.news && d.news.mood;
+  const vix = d.market && d.market.vix;
   const fs = feeSettings();
   const vols = ok.map(x => x.kennzahlen && x.kennzahlen.schwankung_4h_pct).filter(x => x != null).sort((a, b) => a - b);
   const medVol = vols.length ? vols[Math.floor(vols.length / 2)] : null;
@@ -509,8 +512,8 @@ function renderTiles() {
       h('div', { class: 'val', text: vix && vix.value != null ? nf(vix.value, 1) : '–' }),
       h('div', { class: 'cap', text: vix && vix.value != null ? `${vix.level} · ${pc(vix.change_pct, 1)} zum Vortag` : 'keine Daten' })),
     h('div', { class: 'tile' }, h('div', { class: 'lbl', text: 'Nachrichten-Stimmung (24 Std)' }),
-      h('div', { class: 'val', text: mood ? mood.label : '–' }),
-      h('div', { class: 'cap', text: mood ? `${mood.n} Schlagzeilen, nur Stichwort-Zählung` : '' })),
+      h('div', { class: 'val', id: 'moodval', text: '–' }),
+      h('div', { class: 'cap', id: 'moodcap' })),
     h('div', { class: 'tile' }, h('div', { class: 'lbl', text: 'ETFs in einer Zone' }),
       h('div', { class: 'val', text: `${tief} tief · ${hoch} hoch` }),
       h('div', { class: 'cap', text: `von ${ok.length} beobachteten Werten · Kurzfrist-Kauf „prüfen“: ${kauf}` })),
@@ -527,6 +530,32 @@ function renderTiles() {
         h('div', { class: 'cap', text: medVol == null ? 'Kauf + Verkauf zusammen' : `Der Kurs muss so viel steigen, nur um Kauf + Verkauf zu bezahlen. Typische 4-Std-Schwankung: ± ${nf(medVol, 1)} %.` }),
         h('div', { class: 'fees' }, h('label', null, 'Einsatz € ', amount), h('label', null, 'Gebühr/Order € ', fee)));
     })());
+  updateMood();
+}
+const newsData = () => (state.news && state.news.news) || null;
+function updateMood() {
+  const v = $('#moodval'), c = $('#moodcap'), n = newsData(), mood = n && n.mood;
+  if (!v || !c) return;
+  v.textContent = mood ? mood.label : '–';
+  c.textContent = mood ? `${mood.n} Schlagzeilen, nur Stichwort-Zählung` : '';
+}
+const nameOf = symbol => {
+  const all = [...(state.data.symbols || []), ...(state.data.aktien || [])];
+  const x = all.find(y => y.symbol === symbol);
+  return x ? x.name.replace(/ \(.*\)$/, '') : symbol;
+};
+/* Meldungen zu einer Aktie: genannt = steht in der Schlagzeile, thema = koennte ueber ein Thema betroffen sein */
+function newsFor(symbol) {
+  const n = newsData(); if (!n) return { genannt: [], thema: [], stimmung: null };
+  const genannt = n.items.filter(it => (it.werte || []).includes(symbol));
+  const thema = n.items.filter(it => (it.werte_thema || []).includes(symbol) && !(it.werte || []).includes(symbol));
+  let stimmung = null;
+  if (genannt.length >= 2) { const a = genannt.reduce((x, it) => x + it.sentiment, 0) / genannt.length; stimmung = a > 0.15 ? 'eher positiv' : a < -0.15 ? 'eher negativ' : 'gemischt'; }
+  return { genannt, thema, stimmung };
+}
+function showNewsFor(symbol) {
+  state.newsSym = symbol; state.theme = null; renderNews();
+  const box = $('#newsbox'); if (box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function renderBanners() {
   const d = state.data, box = $('#banners'); box.textContent = '';
@@ -554,22 +583,38 @@ function drawAllCharts() {
   document.querySelectorAll('.chartbox').forEach(b => { if (b._sym) drawChart(b, b._sym, state.range); });
 }
 function renderNews() {
-  const n = state.data.news, box = $('#newsbox'); box.textContent = '';
+  const n = newsData(), box = $('#newsbox'); box.textContent = '';
   if (!n || !n.items.length) { box.append(h('div', { class: 'empty', text: 'Keine Meldungen geladen.' })); return; }
+  const info = n.themen_info || {};
   const themes = Object.entries(n.themes || {}).sort((a, b) => b[1] - a[1]);
+  const withStocks = n.items.filter(it => (it.werte || []).length).length;
+  const pick = t => { state.theme = t; state.newsSym = null; renderNews(); };
   const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Nach Thema filtern' },
-    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(!state.theme), text: 'Alle', onclick: () => { state.theme = null; renderNews(); } }),
-    themes.map(([t, c]) => h('button', { type: 'button', class: 'chip', 'aria-pressed': String(state.theme === t), text: `${t} (${c})`, onclick: () => { state.theme = t; renderNews(); } })));
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(!state.theme && !state.newsSym), text: 'Alle', onclick: () => pick(null) }),
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(state.theme === '__werte'), text: `Mit Aktien-Bezug (${withStocks})`, onclick: () => pick('__werte') }),
+    state.newsSym ? h('button', { type: 'button', class: 'chip', 'aria-pressed': 'true', text: `${nameOf(state.newsSym)} ✕`, title: 'Filter aufheben', onclick: () => pick(null) }) : null,
+    themes.map(([t, c]) => h('button', { type: 'button', class: 'chip', 'aria-pressed': String(state.theme === t), text: `${t} (${c})`, onclick: () => pick(t) })));
+  const keep = it => state.newsSym ? ((it.werte || []).includes(state.newsSym) || (it.werte_thema || []).includes(state.newsSym))
+    : state.theme === '__werte' ? (it.werte || []).length > 0 : !state.theme || it.themes.includes(state.theme);
   const list = h('ul', { class: 'news' });
-  n.items.filter(it => !state.theme || it.themes.includes(state.theme)).slice(0, 25).forEach(it => {
+  const shown = n.items.filter(keep).slice(0, 40);
+  shown.forEach(it => {
     const sent = it.sentiment > 0 ? ['p', '▲ positiv'] : it.sentiment < 0 ? ['m', '▼ negativ'] : ['o', '● neutral'];
     const safeUrl = /^https?:\/\//.test(it.url || '');
     const title = safeUrl ? h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', text: it.title }) : h('span', { text: it.title });
+    const gen = (it.werte || []).map(nameOf), th = it.werte_thema || [];
+    const why = (it.themes || []).map(t => info[t]).find(x => x && x.werte.some(w => th.includes(w)));
+    const more = th.length > 4 ? ` und ${th.length - 4} weitere` : '';
     list.append(h('li', null, h('div', null, h('span', { class: 'sent ' + sent[0], text: sent[1] }), title),
-      h('div', { class: 'meta', text: [it.source, ago(it.ts), it.themes.join(', ')].filter(Boolean).join(' · ') })));
+      h('div', { class: 'meta', text: [it.source, ago(it.ts), it.themes.join(', ')].filter(Boolean).join(' · ') }),
+      gen.length ? h('div', { class: 'wert' }, h('b', { text: 'Genannt: ' }), gen.join(', ')) : null,
+      th.length ? h('div', { class: 'wert', text: `Könnte betreffen: ${th.slice(0, 4).map(nameOf).join(', ')}${more}${why ? '. ' + why.warum : ''}` }) : null));
   });
+  const stand = state.news && Date.parse(state.news.generated_at) / 1000;
+  box.append(h('p', { class: 'note', text: `Meldungen Stand ${stand ? ago(stand) : '–'}, der Bot sucht etwa alle 10 Minuten neu. „Genannt“ heißt: Der Name steht in der Schlagzeile. „Könnte betreffen“ ist eine grobe Faustregel nach Thema, keine Prognose.` }), chips);
+  if (!shown.length) box.append(h('div', { class: 'empty', text: 'Keine Meldung zu diesem Filter.' }));
+  else box.append(list);
   const feeds = (n.feeds || []).filter(f => !f.ok);
-  box.append(chips, list);
   if (feeds.length) box.append(h('p', { class: 'note', text: `Nicht erreichbar beim letzten Lauf: ${feeds.map(f => f.name).join(', ')}` }));
 }
 function renderLog() {
@@ -657,7 +702,7 @@ function renderAktien() {
       h('button', { type: 'button', class: 'chip', 'aria-pressed': String(state.aktienFilter === k), text: t, onclick: () => { state.aktienFilter = k; renderAktien(); } }))));
   if (!rows.length) { box.append(h('div', { class: 'empty', text: 'Keine Aktie in dieser Zone.' })); }
   else {
-    const cols = [['Aktie', 0], ['Kurzfrist-Kauf', 0], ['Kurs', 1], ['Heute', 1], ['Wert', 1], ['Zone', 0], ['± 4 Std', 1], ['Mindest-Einsatz', 1], ['Rückblick (4 Std)', 0]];
+    const cols = [['Aktie', 0], ['Kurzfrist-Kauf', 0], ['Kurs', 1], ['Heute', 1], ['Wert', 1], ['Zone', 0], ['± 4 Std', 1], ['Mindest-Einsatz', 1], ['Meldungen', 0], ['Rückblick (4 Std)', 0]];
     box.append(h('div', { class: 'scroll' }, h('table', null,
       h('thead', null, h('tr', null, cols.map(([t, n]) => h('th', { class: n ? 'n' : '', text: t })))),
       h('tbody', null, rows.map(({ a, v }) => {
@@ -672,6 +717,14 @@ function renderAktien() {
           h('td', { text: (a.score == null ? '' : glyphFor(a) + ' ') + a.label }),
           h('td', { class: 'n', text: k.schwankung_4h_pct == null ? '–' : '± ' + nf(k.schwankung_4h_pct) + ' %' }),
           h('td', { class: 'n', text: k.schwankung_4h_pct ? 'ab ' + nf(200 * fs.fee / k.schwankung_4h_pct, 0) + ' €' : '–' }),
+          (() => {
+            const nw = newsFor(a.symbol);
+            if (!nw.genannt.length && !nw.thema.length) return h('td', { style: { minWidth: '120px' } }, h('span', { class: 'sub', text: 'keine' }));
+            const line = (nw.genannt.length ? `${nw.genannt.length} genannt` : '') + (nw.stimmung ? ` (${nw.stimmung})` : '');
+            return h('td', { style: { minWidth: '120px' } },
+              h('button', { type: 'button', class: 'lk', title: 'Meldungen anzeigen', onclick: () => showNewsFor(a.symbol) }, line || `${nw.thema.length} über Themen`),
+              nw.genannt.length && nw.thema.length ? h('div', { class: 'sub', text: `${nw.thema.length} über Themen` }) : null);
+          })(),
           h('td', null, r4 ? [`${r4.signale} Signale, Ø ${pc(r4.schnitt_pct, 2)}`, h('div', { class: 'sub', text: r4.urteil })] : '–'));
       })))));
   }
@@ -689,9 +742,18 @@ async function load() {
     const d = await getJson('data.json');
     let log = state.log;
     try { const l = await getJson('signal_log.json'); log = Array.isArray(l.entries) ? l.entries : []; } catch (e) { /* Protokoll ist optional */ }
+    let nws = null;
+    try { nws = await getJson('news.json'); } catch (e) { /* Nachrichten sind optional */ }
     state.err = null;
-    if (d.generated_at !== state.gen || log !== state.log) { state.data = d; state.gen = d.generated_at; state.log = log; renderAll(); if (isLong(state.range)) loadCharts(); }
-    else { renderBanners(); updateStatus(); }
+    const logKey = JSON.stringify(log), newsNew = nws && (!state.news || nws.generated_at !== state.news.generated_at);
+    if (d.generated_at !== state.gen || logKey !== state.logKey) {
+      state.data = d; state.gen = d.generated_at; state.log = log; state.logKey = logKey;
+      if (newsNew) state.news = nws;
+      renderAll(); if (isLong(state.range)) loadCharts();
+    } else {
+      if (newsNew) { state.news = nws; updateMood(); renderAktien(); renderNews(); }
+      renderBanners(); updateStatus();
+    }
   } catch (e) {
     state.err = String(e.message || e);
     if (state.data) renderBanners();
