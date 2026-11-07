@@ -334,7 +334,7 @@ function drawChart(host, sym, range) {
     const chg = c[0] ? (c[N - 1] / c[0] - 1) * 100 : null;
     host.append(h('div', { class: 'sub', style: { marginTop: '2px' } }, `Veränderung ${R.note}: `, h('b', { class: cls(chg), text: pc(chg) })));
   }
-  const stamp = ts => R.intraday ? fmtTime(ts) : R.hourly ? fmtDateTime(ts) : R.weekly ? 'Woche ab ' + fmtDay(ts) : fmtDay(ts);
+  const stamp = ts => R.intraday ? fmtTime(ts) : R.hourly ? fmtDateTime(ts) : R.weekly ? (({ m, y }) => `${MONTHS[m]} ${y}`)(ymd(ts, off)) : fmtDay(ts);
   let cur = N - 1;
   function show(k) {
     k = Math.max(0, Math.min(N - 1, k)); cur = k;

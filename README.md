@@ -72,4 +72,4 @@ Der Bot wertet bei jedem Lauf alle Aktien aus `aktien_universum` mit denselben K
 
 ## Zeiträume der Diagramme
 
-Über den Karten stehen die Zeiträume 1 Tag, 7 Tage, 1 Monat, 6 Monate, 1 Jahr und Maximal. Bei 1 Tag und 7 Tagen sieht man die 15-Minuten-Kerzen mit Bollinger-Band. Darunter wird es gröber: 1 Monat zeigt Stundenkurse, 6 Monate und 1 Jahr Tageskurse, Maximal Wochenkurse seit dem Start des ETFs. Unter dem Diagramm steht die Veränderung im gewählten Zeitraum. Die längeren Verläufe liegen in `charts.json` und werden erst geladen, wenn du einen längeren Zeitraum anklickst. Dadurch bleibt `data.json` klein.
+Über den Karten stehen die Zeiträume 1 Tag, 7 Tage, 1 Monat, 6 Monate, 1 Jahr und Maximal. Bei 1 Tag und 7 Tagen sieht man die 15-Minuten-Kerzen mit Bollinger-Band. Darunter wird es gröber: 1 Monat zeigt Stundenkurse, 6 Monate und 1 Jahr Tageskurse, Maximal grobe Kurse (Yahoo liefert hier Monatskurse) seit dem Start des ETFs. Unter dem Diagramm steht die Veränderung im gewählten Zeitraum. Die längeren Verläufe liegen in `charts.json` und werden erst geladen, wenn du einen längeren Zeitraum anklickst. Dadurch bleibt `data.json` klein.
