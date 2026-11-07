@@ -22,7 +22,8 @@ assert {"Handel & Zölle", "Politik & Regulierung", "Exportkontrollen & China"} 
 assert "Exportkontrollen & China" in tag("USA verschärfen Exportkontrollen für KI-Chips")["themes"]
 assert "Rüstung & Verteidigung" in tag("Bundeswehr bestellt Drohnen, Verteidigungshaushalt steigt")["themes"]
 assert "Geopolitik" in tag("Spannungen im Nahen Osten nehmen zu")["themes"]
-assert "Politik & Regulierung" in tag("EU-Kommission eröffnet Kartellverfahren gegen Google")["themes"]
+assert "Regulierung & Kartellrecht" in tag("EU-Kommission eröffnet Kartellverfahren gegen Google")["themes"]
+assert "Politik & Regulierung" not in tag("EU-Kommission eröffnet Kartellverfahren gegen Google")["themes"]
 print("ok  Themen")
 
 # Genannte Werte: ganze Woerter, keine Zufallstreffer
@@ -66,4 +67,25 @@ C.fetch_news = orig
 d = C.build_news_doc(cfg, True, now, {})                                         # Demo
 assert d["demo"] and len(d["news"]["items"]) == 7
 print("ok  Ausfallschutz")
+
+# Allgemeine Quelle: nur Meldungen mit Thema oder Aktien-Bezug kommen durch
+from email.utils import format_datetime
+from datetime import datetime, timezone
+def _it(title, link):
+    return f"<item><title>{title}</title><link>{link}</link><pubDate>{format_datetime(datetime.now(timezone.utc))}</pubDate></item>"
+feed = ("<?xml version='1.0'?><rss><channel>" + _it("Schüsse in Krakau, sechs Tote", "https://x/1")
+        + _it("Bundestag streitet über Haushalt", "https://x/2") + _it("Nvidia baut neue Fabrik", "https://x/3") + "</channel></rss>")
+C.http_get = lambda url, **kw: feed.encode("utf-8")
+c2 = dict(cfg, news_feeds=[{"name": "Allgemein", "url": "https://a", "nur_mit_thema": True}, {"name": "Markt", "url": "https://b"}])
+res = C.fetch_news(c2, int(time.time()))
+by_feed = {}
+for i in res["items"]:
+    by_feed.setdefault(i["feed"], []).append(i["title"])
+# gleiche Titel aus beiden Quellen werden nur einmal gezaehlt, deshalb pruefen wir die Allgemein-Quelle einzeln
+c3 = dict(cfg, news_feeds=[{"name": "Allgemein", "url": "https://a", "nur_mit_thema": True}])
+titles = [i["title"] for i in C.fetch_news(c3, int(time.time()))["items"]]
+assert "Schüsse in Krakau, sechs Tote" not in titles and len(titles) == 2, titles
+c4 = dict(cfg, news_feeds=[{"name": "Markt", "url": "https://b"}])
+assert len(C.fetch_news(c4, int(time.time()))["items"]) == 3
+print("ok  Allgemeine Quellen")
 print("alle Politik-Tests bestanden")

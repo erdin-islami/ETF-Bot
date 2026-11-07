@@ -560,8 +560,9 @@ THEMES = {
     "Tech & KI": ["nvidia", "ki", "künstliche intelligenz", "ai", "chip*", "apple", "microsoft", "tesla", "alphabet", "amazon", "openai", "halbleiter*"],
     "Rohstoffe": ["öl", "ölpreis*", "oil", "gold", "goldpreis*", "opec", "gas", "erdgas", "energie*", "energy"],
     "Politik & Regulierung": ["regier*", "wahl*", "wähler*", "koalition*", "kongress", "congress", "senat", "weißes haus", "white house",
-                              "trump", "haushalt*", "schuldenbremse", "steuer*", "subvention*", "gesetz*", "regulier*", "regulat*",
-                              "kartell*", "antitrust", "verbot*", "bundestag", "parlament*", "präsident*", "election*", "shutdown"],
+                              "trump", "haushalt*", "schuldenbremse", "steuer*", "subvention*", "gesetz*",
+                              "verbot*", "bundestag", "parlament*", "präsident*", "election*", "shutdown"],
+    "Regulierung & Kartellrecht": ["regulier*", "regulat*", "kartell*", "antitrust", "monopol*", "eu-kommission", "strafzahlung*"],
     "Exportkontrollen & China": ["exportkontroll*", "export control*", "exportverbot*", "embargo*", "china", "chinesisch*", "peking",
                                  "beijing", "seltene erden", "rare earth*", "chipverbot*", "huawei"],
     "Rüstung & Verteidigung": ["rüstung*", "verteidigung*", "bundeswehr", "defense", "defence", "nato", "militär*",
@@ -575,9 +576,8 @@ THEME_WERTE = {
     "Exportkontrollen & China": (["NVDA", "AMD", "AVGO", "MU", "INTC", "AAPL", "TSLA"],
                                  "Exportregeln und der China-Handel betreffen vor allem Chipfirmen und Konzerne mit großem China-Geschäft."),
     "Rüstung & Verteidigung": (["RHM.DE", "PLTR"], "Höhere Verteidigungsausgaben kommen vor allem Rüstungsfirmen zugute."),
-    "Zinsen & Notenbanken": (["JPM", "DBK.DE", "ALV.DE"], "Zinsen beeinflussen die Erträge von Banken und Versicherern."),
-    "Politik & Regulierung": (["GOOGL", "META", "AMZN", "MSFT", "AAPL", "JPM", "DBK.DE"],
-                              "Regulierung und Kartellrecht betreffen vor allem Tech-Giganten und Banken."),
+    "Regulierung & Kartellrecht": (["GOOGL", "META", "AMZN", "MSFT", "AAPL", "JPM", "DBK.DE"],
+                                   "Regulierung und Kartellrecht betreffen vor allem Tech-Giganten und Banken."),
     "Geopolitik": (["RHM.DE"], "Konflikte und Spannungen wirken oft auf Rüstungswerte."),
 }
 _NEG_RE = [re.compile(r"\b" + re.escape(w), re.I) for w in NEG]
@@ -670,6 +670,7 @@ def parse_feed(xml_bytes, feed_name):
 
 def fetch_news(cfg, now_ts):
     collected, feeds = [], []
+    only_topic = {f["name"] for f in cfg["news_feeds"] if f.get("nur_mit_thema")}
     for feed in cfg["news_feeds"]:
         try:
             items = parse_feed(http_get(feed["url"], retries=2, max_bytes=2_000_000), feed["name"])
@@ -690,6 +691,9 @@ def fetch_news(cfg, now_ts):
         it["sentiment"] = headline_sentiment(it["title"])
         it["themes"] = headline_themes(it["title"])
         tag_item(it, pats, known)
+        # Allgemeine Quellen (z. B. Tagesschau Inland): nur Meldungen mit Themen- oder Aktien-Bezug
+        if it["feed"] in only_topic and not it["themes"] and not it["werte"]:
+            continue
         out.append(it)
     out = out[: cfg["news_max_items"]]
     recent = [x["sentiment"] for x in out if now_ts - x["ts"] <= 24 * 3600]

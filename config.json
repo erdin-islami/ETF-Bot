@@ -91,11 +91,13 @@
     },
     {
       "name": "Tagesschau Inland",
-      "url": "https://www.tagesschau.de/inland/index~rss2.xml"
+      "url": "https://www.tagesschau.de/inland/index~rss2.xml",
+      "nur_mit_thema": true
     },
     {
       "name": "Tagesschau Ausland",
-      "url": "https://www.tagesschau.de/ausland/index~rss2.xml"
+      "url": "https://www.tagesschau.de/ausland/index~rss2.xml",
+      "nur_mit_thema": true
     },
     {
       "name": "US-Börsen (englisch)",
@@ -295,5 +297,5 @@
       ]
     }
   ],
-  "_news_hinweis": "stichworte bei den Aktien: Schlagzeilen mit diesen Wörtern werden der Aktie zugeordnet. news_feeds: weitere RSS-Quellen kannst du einfach ergänzen."
+  "_news_hinweis": "stichworte bei den Aktien: Schlagzeilen mit diesen Wörtern werden der Aktie zugeordnet. news_feeds: weitere RSS-Quellen kannst du ergänzen. \"nur_mit_thema\": true zeigt aus einer allgemeinen Quelle nur Meldungen mit Themen- oder Aktien-Bezug."
 }
