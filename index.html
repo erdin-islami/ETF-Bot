@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETF-Bot</title>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10); --neutral:#f0efec;
+  --blue:#2a78d6; --red:#e34948; --pos:#006300; --neg:#d03b3b; --warnbg:#fff3cf; --infobg:#e8f1fc;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10); --neutral:#383835;
+    --blue:#3987e5; --red:#e66767; --pos:#0ca30c; --neg:#e66767; --warnbg:#3a3112; --infobg:#14283f;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.wrap{max-width:1120px;margin:0 auto}
+h1{font-size:22px;margin:0;font-weight:650}
+h2{font-size:17px;margin:28px 0 10px;font-weight:650}
+.sub{color:var(--ink2);font-size:13px}
+.muted{color:var(--muted)}
+header{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:space-between}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0 4px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{all:unset;cursor:pointer;padding:7px 12px;font-size:13px;color:var(--ink2);min-height:32px;box-sizing:border-box}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg);font-weight:600}
+.seg.rng{max-width:100%;overflow-x:auto}
+@media (max-width:520px){ .seg.rng button{padding:7px 8px;font-size:12px} }
+.seg button:focus-visible,.ghost:focus-visible,summary:focus-visible,.chip:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.ghost{all:unset;cursor:pointer;font-size:13px;color:var(--ink2);padding:7px 10px;border-radius:8px;min-height:32px;box-sizing:border-box}
+.ghost:hover{background:var(--neutral)}
+.banner{margin:10px 0;padding:10px 12px;border-radius:10px;font-size:14px;border:1px solid var(--border)}
+.banner.warn{background:var(--warnbg)} .banner.info{background:var(--infobg)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:14px}
+.tile,.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px}
+.tile .lbl{font-size:13px;color:var(--ink2)}
+.tile .val{font-size:26px;font-weight:650;margin:2px 0}
+.tile .cap{font-size:13px;color:var(--ink2)}
+.tile input{width:64px;font:inherit;font-size:14px;padding:4px 6px;border:1px solid var(--axis);border-radius:6px;background:var(--bg);color:var(--ink)}
+.fees{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--ink2);align-items:center}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr));gap:14px}
+.card h3{margin:0;font-size:16px;font-weight:650}
+.card .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.card .px{text-align:right;white-space:nowrap}
+.card .px b{font-size:18px;font-weight:650}
+.up{color:var(--pos)} .down{color:var(--neg)}
+.zone{display:flex;align-items:center;gap:8px;margin:10px 0 6px;font-weight:650}
+.zone .g{font-size:13px}
+.zone.tief .g{color:var(--blue)} .zone.hoch .g{color:var(--red)} .zone .score{margin-left:auto;font-weight:650}
+.meter .track{position:relative;height:8px;border-radius:4px;background:var(--neutral)}
+.meter .mid{position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;background:var(--axis);margin-left:-1px}
+.meter .fill{position:absolute;top:0;bottom:0;border-radius:4px}
+.meter .ends{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:3px}
+.chartbox{position:relative;margin-top:8px}
+.chartbox svg{display:block;width:100%;height:150px;touch-action:pan-y}
+.chartbox svg:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+.ln{fill:none;stroke:var(--blue);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.band{fill:var(--blue);opacity:.10}
+.gl{stroke:var(--grid);stroke-width:1}
+.dsep{stroke:var(--axis);stroke-width:1}
+.tk{fill:var(--muted);font-size:10px}
+.dot{fill:var(--blue);stroke:var(--surface);stroke-width:2}
+.cross{stroke:var(--ink2);stroke-width:1}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--axis);border-radius:8px;padding:6px 9px;font-size:12px;line-height:1.35;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:2;display:none;white-space:nowrap}
+.tip b{font-size:14px;font-weight:650}
+.tip .k{display:inline-block;width:12px;height:2px;background:var(--blue);vertical-align:middle;margin-right:6px}
+details{margin-top:10px;border-top:1px solid var(--border);padding-top:8px}
+summary{cursor:pointer;font-size:14px;color:var(--ink2);padding:4px 0;min-height:32px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-weight:600;color:var(--ink2);white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td .sub{white-space:normal}
+td.n .sub{white-space:nowrap}
+.scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:14px}
+.card .scroll{border:0;border-radius:0;background:none}
+.eff{display:inline-block;position:relative;width:70px;height:6px;background:var(--neutral);border-radius:3px;vertical-align:middle}
+.eff i{position:absolute;top:0;bottom:0;border-radius:3px}
+.eff:after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--axis)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px;margin:8px 0}
+.kv dt{color:var(--ink2)} .kv dd{margin:0}
+.note{font-size:13px;color:var(--ink2);margin:8px 0}
+.tag{display:inline-block;font-size:12px;padding:1px 7px;border-radius:999px;border:1px solid var(--axis);color:var(--ink2)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.chip{all:unset;cursor:pointer;font-size:13px;padding:5px 10px;border:1px solid var(--axis);border-radius:999px;color:var(--ink2);min-height:30px;box-sizing:border-box}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.news{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--border);border-radius:14px}
+.news li{padding:10px 14px;border-bottom:1px solid var(--border)}
+.news li:last-child{border-bottom:0}
+.news a{color:var(--ink);text-decoration:none;font-weight:550}
+.news a:hover{text-decoration:underline}
+.news .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.news .wert{font-size:12px;color:var(--ink2);margin-top:3px}
+.lk{all:unset;cursor:pointer;font-size:inherit;text-decoration:underline dotted;text-underline-offset:3px;color:inherit}
+.lk:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.sent{font-size:12px;font-weight:600;margin-right:6px}
+.sent.p{color:var(--pos)} .sent.m{color:var(--neg)} .sent.o{color:var(--muted)}
+footer{margin-top:28px;font-size:13px;color:var(--ink2)}
+footer ul{padding-left:18px;margin:6px 0}
+.empty{padding:16px;color:var(--ink2);font-size:14px}
+.sr{position:absolute;left:-9999px}
+.verdict{margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--bg);border-left:4px solid var(--axis);font-size:13px}
+.verdict b{display:block;font-size:14px;font-weight:650}
+.verdict span{color:var(--ink2)}
+.v-kauf{border-left-color:var(--blue)} .v-nein{border-left-color:var(--red)}
+.card{min-width:0}
+@media (max-width:520px){ .cards{grid-template-columns:minmax(0,1fr)} h1{font-size:20px} }
+@media (forced-colors: active){ .band{opacity:.3} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ETF-Bot</h1>
+    <div class="sub" id="status" role="status">Lade Daten …</div>
+  </header>
+
+  <div class="controls" id="controls">
+    <div class="seg rng" role="group" aria-label="Zeitraum der Diagramme">
+      <button type="button" data-range="1" aria-pressed="false">1 Tag</button>
+      <button type="button" data-range="7" aria-pressed="true">7 Tage</button>
+      <button type="button" data-range="1m" aria-pressed="false">1 Monat</button>
+      <button type="button" data-range="6m" aria-pressed="false">6 Monate</button>
+      <button type="button" data-range="1y" aria-pressed="false">1 Jahr</button>
+      <button type="button" data-range="max" aria-pressed="false">Maximal</button>
+    </div>
+    <div class="seg" role="group" aria-label="Ansicht">
+      <button type="button" data-view="cards" aria-pressed="true">Karten</button>
+      <button type="button" data-view="table" aria-pressed="false">Tabelle</button>
+    </div>
+    <button type="button" class="ghost" id="reload">Jetzt aktualisieren</button>
+  </div>
+
+  <div id="banners"></div>
+  <section class="tiles" id="tiles" aria-label="Marktlage"></section>
+
+  <h2>ETFs im Blick</h2>
+  <div id="main"></div>
+
+  <h2>Langfristig (Sparplan-Sicht)</h2>
+  <div id="langbox"></div>
+
+  <h2>Aktien: mögliche Kurzfrist-Kandidaten</h2>
+  <div id="aktienbox"></div>
+
+  <h2>Nachrichten und Weltgeschehen</h2>
+  <div id="newsbox"></div>
+
+  <h2>Signal-Protokoll: Was passierte nach einem Signal wirklich?</h2>
+  <div id="logbox"></div>
+
+  <footer>
+    <ul>
+      <li>Der Wert reicht von −100 (Hoch-Zone) bis +100 (Tief-Zone). Er fasst Kennzahlen aus vergangenen Kursen zusammen (RSI, Bollinger-Bänder, MACD, 20-Tage-Spanne). Eine Vorhersage ist das nicht.</li>
+      <li>Die Nachrichten-Stimmung zählt nur Stichwörter in Schlagzeilen. Sie ist grob und fließt nicht in den Wert ein.</li>
+      <li>„Kurzfrist-Kauf“ ist ein Regelwerk des Bots und gilt nur für Kauf und Verkauf innerhalb weniger Stunden, nicht für einen Sparplan. „Prüfen“ gibt es nur, wenn der Wert in der Tief-Zone steht, kein Abwärtstrend vorliegt, der Rückblick belegbar besser war als der Durchschnitt und die Gebühren nicht höher sind als die übliche 4-Std-Schwankung. Das ist keine Anlageberatung.</li>
+      <li>Kursquelle ist Yahoo Finance (inoffiziell, kann ausfallen oder verzögert sein). Keine Anlageberatung.</li>
+    </ul>
+  </footer>
+</div>
+
+<script>
+(() => {
+'use strict';
+const NS = 'http://www.w3.org/2000/svg';
+const $ = (s, r = document) => r.querySelector(s);
+
+/* ---------- kleine Bausteine (Texte immer per textContent, nie innerHTML) ---------- */
+function setAttrs(e, a) {
+  if (!a) return;
+  for (const [k, v] of Object.entries(a)) {
+    if (v == null || v === false) continue;
+    if (k === 'text') e.textContent = v;
+    else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2), v);
+    else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+}
+function add(e, kids) { for (const k of kids.flat()) { if (k == null || k === false) continue; e.append(k.nodeType ? k : document.createTextNode(String(k))); } }
+const h = (tag, a, ...kids) => { const e = document.createElement(tag); setAttrs(e, a); add(e, kids); return e; };
+const s = (tag, a, ...kids) => { const e = document.createElementNS(NS, tag); setAttrs(e, a); add(e, kids); return e; };
+
+const nf = (n, d = 2) => (n == null || isNaN(n)) ? '–' : Number(n).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+const pc = (n, d = 2) => n == null ? '–' : (n > 0 ? '+' : '') + nf(n, d) + ' %';
+const cls = n => n == null ? '' : n > 0 ? 'up' : n < 0 ? 'down' : '';
+const nowSec = () => Date.now() / 1000;
+function ago(ts) {
+  const m = Math.round((nowSec() - ts) / 60);
+  if (m < 1) return 'gerade eben';
+  if (m < 60) return `vor ${m} Min`;
+  const hh = Math.round(m / 60);
+  return hh < 48 ? `vor ${hh} Std` : `vor ${Math.round(hh / 24)} Tg`;
+}
+const fmtTime = ts => new Date(ts * 1000).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+const fmtDateTime = ts => new Date(ts * 1000).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+/* ---------- Zustand ---------- */
+const state = { data: null, log: [], range: '7', news: null, newsSym: null, logKey: '', charts: null, chartsGen: null, chartsBusy: false, chartsErr: null, view: 'cards', open: new Set(), theme: null, aktienFilter: null, gen: null, err: null, amount: null, fee: null };
+try { const f = JSON.parse(localStorage.getItem('etfbot.fees') || 'null'); if (f) { state.amount = f.amount; state.fee = f.fee; } } catch (e) { /* ohne Speicher weiter */ }
+
+const ZONE = {
+  tief: { g: '▼', t: 'Tief-Zone' }, hoch: { g: '▲', t: 'Hoch-Zone' },
+};
+function glyphFor(sym) {
+  if (sym.zone === 'tief') return '▼';
+  if (sym.zone === 'hoch') return '▲';
+  if (sym.score != null && sym.score >= 25) return '▽';
+  if (sym.score != null && sym.score <= -25) return '△';
+  return '●';
+}
+const feeSettings = () => {
+  const st = state.data.settings;
+  const amount = state.amount > 0 ? state.amount : st.trade_amount_eur;
+  const fee = state.fee >= 0 && state.fee != null ? state.fee : st.order_fee_eur;
+  return { amount, fee, cost: 2 * fee / amount * 100 };
+};
+const marketOpen = sym => sym.session_start && sym.session_end && nowSec() >= sym.session_start && nowSec() <= sym.session_end;
+
+/* ---------- Diagramm ---------- */
+let chartSeq = 0;
+const RANGES = {
+  '1': { aria: 'letzter Handelstag', intraday: true },
+  '7': { aria: 'letzte 7 Tage', intraday: true, note: 'in den letzten 7 Tagen' },
+  '1m': { aria: 'letzter Monat', key: '1m', hourly: true, note: 'im letzten Monat' },
+  '6m': { aria: 'letzte 6 Monate', key: '6m', note: 'in den letzten 6 Monaten' },
+  '1y': { aria: 'letztes Jahr', key: '1y', note: 'im letzten Jahr' },
+  'max': { aria: 'gesamter Verlauf', key: 'max', weekly: true, note: 'seit Beginn der Aufzeichnung' },
+};
+const isLong = r => !RANGES[r].intraday;
+const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const ymd = (ts, off) => { const d = new Date((ts + off) * 1000); return { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate(), wd: d.getUTCDay() }; };
+const fmtDay = ts => new Date(ts * 1000).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+function pickIdx(t, off, days) {
+  const dk = t.map(x => Math.floor((x + off) / 86400));
+  const uniq = [...new Set(dk)];
+  const first = uniq[Math.max(0, uniq.length - days)];
+  const idx = []; dk.forEach((d, i) => { if (d >= first) idx.push(i); });
+  return idx;
+}
+function rangeSeries(sym, range) {
+  const R = RANGES[range], off = sym.gmtoffset || 0;
+  if (R.intraday) {
+    const ser = sym.series;
+    if (!ser || !ser.t || ser.t.length < 3) return null;
+    let idx;
+    if (range === '1') idx = pickIdx(ser.t, off, 1);
+    else { const cut = ser.t[ser.t.length - 1] - 7 * 86400; idx = []; ser.t.forEach((x, i) => { if (x >= cut) idx.push(i); }); }
+    return { ser, idx };
+  }
+  const lc = state.charts && state.charts[sym.symbol] && state.charts[sym.symbol][R.key];
+  if (!lc || !lc.t || lc.t.length < 3) return null;
+  return { ser: { t: lc.t, c: lc.c, u: [], l: [], rsi: [] }, idx: lc.t.map((_, i) => i) };
+}
+/* Beschriftungen der Zeitachse bei langen Zeitraeumen: [{ k: Position, label }] */
+function longTicks(ser, idx, off, range) {
+  const dates = idx.map(i => ymd(ser.t[i], off));
+  const cand = [];
+  for (let k = 1; k < dates.length; k++) {
+    const a = dates[k - 1], b = dates[k];
+    if (range === '1m') { if (b.d !== a.d && b.wd === 1) cand.push({ k, label: `${b.d}.${b.m + 1}.` }); }
+    else if (range === 'max') { if (b.y !== a.y) cand.push({ k, label: String(b.y) }); }
+    else if (b.m !== a.m) cand.push({ k, label: MONTHS[b.m] });
+  }
+  const step = range === 'max' ? Math.max(1, Math.ceil(cand.length / 5)) : range === '1y' ? 2 : 1;
+  return cand.filter((_, n) => n % step === 0);
+}
+function drawChart(host, sym, range) {
+  host.textContent = '';
+  const R = RANGES[range], off = sym.gmtoffset || 0;
+  const pick = rangeSeries(sym, range);
+  if (!pick) {
+    let msg = 'Kein Kursverlauf vorhanden.';
+    if (isLong(range)) msg = state.chartsErr ? 'Der längere Verlauf konnte nicht geladen werden.' : state.charts ? 'Für diesen Zeitraum liegen keine Daten vor.' : 'Verlauf wird geladen …';
+    host.append(h('div', { class: 'empty', text: msg })); return;
+  }
+  const { ser, idx } = pick;
+  const dk = ser.t.map(x => Math.floor((x + off) / 86400));
+  const W = Math.max(260, host.clientWidth || 320), H = 150, m = { l: 6, r: 50, t: 8, b: 20 };
+  const N = idx.length;
+  const c = idx.map(i => ser.c[i]);
+  let lo = Math.min(...c), hi = Math.max(...c);
+  const pad = (hi - lo) * 0.14 || hi * 0.002; lo -= pad; hi += pad;
+  const X = k => m.l + (W - m.l - m.r) * k / (N - 1);
+  const Y = v => m.t + (H - m.t - m.b) * (1 - (v - lo) / (hi - lo));
+  const id = 'clip' + (++chartSeq);
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', tabindex: '0',
+    'aria-label': `Kursverlauf ${sym.name}, ${R.aria}. Letzter Kurs ${nf(c[N - 1])}. Mit Pfeiltasten durch die Werte gehen.` });
+  svg.append(s('defs', null, s('clipPath', { id }, s('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b }))));
+  for (const f of [0.15, 0.5, 0.85]) {
+    const v = lo + (hi - lo) * f, y = Y(v);
+    svg.append(s('line', { class: 'gl', x1: m.l, x2: W - m.r, y1: y, y2: y }));
+    svg.append(s('text', { class: 'tk', x: W - m.r + 6, y: y + 3, text: nf(v, v > 100 ? 1 : 2) }));
+  }
+  // Zeitachse: bei kurzen Zeitraeumen Tagestrenner mit Wochentag, sonst Monate bzw. Jahre
+  if (R.intraday) {
+    let startK = 0;
+    for (let k = 1; k <= N; k++) {
+      if (k === N || dk[idx[k]] !== dk[idx[k - 1]]) {
+        if (startK > 0) svg.append(s('line', { class: 'dsep', x1: X(startK), x2: X(startK), y1: m.t, y2: H - m.b }));
+        const label = new Date(ser.t[idx[startK]] * 1000).toLocaleDateString('de-DE', { weekday: 'short' });
+        svg.append(s('text', { class: 'tk', x: X(startK) + 4, y: H - 6, text: label }));
+        startK = k;
+      }
+    }
+  } else {
+    let lastX = -99;
+    for (const tk of longTicks(ser, idx, off, range)) {
+      const x = X(tk.k);
+      if (x - lastX < 34) continue;
+      lastX = x;
+      svg.append(s('line', { class: 'dsep', x1: x, x2: x, y1: m.t, y2: H - m.b }));
+      svg.append(s('text', { class: 'tk', x: x + 4, y: H - 6, text: tk.label }));
+    }
+  }
+  // Bollinger-Band als zarte Flaeche (nur bei den 15-Minuten-Kerzen vorhanden)
+  const top = [], bot = [];
+  idx.forEach((i, k) => { if (ser.u[i] != null && ser.l[i] != null) { top.push(`${X(k)},${Y(ser.u[i])}`); bot.push(`${X(k)},${Y(ser.l[i])}`); } });
+  if (top.length > 2) svg.append(s('polygon', { class: 'band', points: top.concat(bot.reverse()).join(' '), 'clip-path': `url(#${id})` }));
+  svg.append(s('polyline', { class: 'ln', points: c.map((v, k) => `${X(k)},${Y(v)}`).join(' '), 'clip-path': `url(#${id})` }));
+  svg.append(s('circle', { class: 'dot', cx: X(N - 1), cy: Y(c[N - 1]), r: 4 }));
+  // Hover-Ebene
+  const cross = s('line', { class: 'cross', y1: m.t, y2: H - m.b, style: { display: 'none' } });
+  const hdot = s('circle', { class: 'dot', r: 4, style: { display: 'none' } });
+  svg.append(cross, hdot);
+  const tip = h('div', { class: 'tip', 'aria-hidden': 'true' });
+  host.append(svg, tip);
+  if (range !== '1') {
+    const chg = c[0] ? (c[N - 1] / c[0] - 1) * 100 : null;
+    host.append(h('div', { class: 'sub', style: { marginTop: '2px' } }, `Veränderung ${R.note}: `, h('b', { class: cls(chg), text: pc(chg) })));
+  }
+  const stamp = ts => R.intraday ? fmtTime(ts) : R.hourly ? fmtDateTime(ts) : R.weekly ? (({ m, y }) => `${MONTHS[m]} ${y}`)(ymd(ts, off)) : fmtDay(ts);
+  let cur = N - 1;
+  function show(k) {
+    k = Math.max(0, Math.min(N - 1, k)); cur = k;
+    const i = idx[k], x = X(k), y = Y(ser.c[i]);
+    cross.setAttribute('x1', x); cross.setAttribute('x2', x); cross.style.display = '';
+    hdot.setAttribute('cx', x); hdot.setAttribute('cy', y); hdot.style.display = '';
+    tip.textContent = '';
+    add(tip, [h('div', { class: 'sub', text: stamp(ser.t[i]) }),
+      h('div', null, h('span', { class: 'k' }), h('b', { text: nf(ser.c[i], 3) })),
+      ser.u[i] != null ? h('div', { class: 'sub', text: `Band ${nf(ser.l[i], 2)} – ${nf(ser.u[i], 2)}` }) : null,
+      ser.rsi[i] != null ? h('div', { class: 'sub', text: `RSI ${nf(ser.rsi[i], 0)}` }) : null]);
+    tip.style.display = 'block';
+    const tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, Math.min(W - tw, x > W / 2 ? x - tw - 12 : x + 12)) + 'px';
+    tip.style.top = '4px';
+  }
+  function hide() { cross.style.display = 'none'; hdot.style.display = 'none'; tip.style.display = 'none'; }
+  const kFromEvent = ev => { const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * (W / r.width); return Math.round((px - m.l) / (W - m.l - m.r) * (N - 1)); };
+  svg.addEventListener('pointermove', ev => show(kFromEvent(ev)));
+  svg.addEventListener('pointerdown', ev => show(kFromEvent(ev)));
+  svg.addEventListener('pointerleave', hide);
+  svg.addEventListener('focus', () => show(cur));
+  svg.addEventListener('blur', hide);
+  svg.addEventListener('keydown', ev => {
+    if (ev.key === 'ArrowLeft') { show(cur - 1); ev.preventDefault(); }
+    else if (ev.key === 'ArrowRight') { show(cur + 1); ev.preventDefault(); }
+    else if (ev.key === 'Escape') hide();
+  });
+}
+/* Die laengeren Verlaeufe liegen in charts.json und werden erst beim Bedarf geladen */
+async function loadCharts() {
+  const g = state.data && state.data.generated_at;
+  if (!g || state.chartsBusy || (state.charts && state.chartsGen === g)) return;
+  state.chartsBusy = true;
+  try {
+    const r = await fetch(`charts.json?g=${encodeURIComponent(g)}`);
+    if (!r.ok) throw new Error(`charts.json: HTTP ${r.status}`);
+    const j = await r.json();
+    state.charts = j.symbols || {}; state.chartsGen = g; state.chartsErr = null;
+  } catch (e) { state.chartsErr = String(e.message || e); }
+  finally { state.chartsBusy = false; }
+  drawAllCharts();
+}
+
+/* ---------- Bausteine fuer Karten ---------- */
+function meter(score, zone) {
+  const v = Math.max(-100, Math.min(100, score));
+  const left = v >= 0 ? 50 : 50 + v / 2, width = Math.abs(v) / 2;
+  const color = v >= 0 ? 'var(--blue)' : 'var(--red)';
+  return h('div', { class: 'meter', role: 'img', 'aria-label': `Wert ${nf(score, 0)} von 100 in Richtung ${v >= 0 ? 'Tief' : 'Hoch'}` },
+    h('div', { class: 'track' }, h('div', { class: 'mid' }), h('div', { class: 'fill', style: { left: left + '%', width: width + '%', background: color } })),
+    h('div', { class: 'ends' }, h('span', { text: '▲ Hoch-Zone' }), h('span', { text: 'Tief-Zone ▼' })));
+}
+function effBar(v) {
+  const left = v >= 0 ? 50 : 50 + v * 50, width = Math.abs(v) * 50;
+  return h('span', { class: 'eff', 'aria-hidden': 'true' }, h('i', { style: { left: left + '%', width: width + '%', background: v >= 0 ? 'var(--blue)' : 'var(--red)' } }));
+}
+function backtestBlock(sym) {
+  const fs = feeSettings();
+  const bt = sym.rueckblick || {};
+  const rows = Object.values(bt);
+  if (!rows.length) return h('p', { class: 'note', text: 'Kein Rückblick verfügbar.' });
+  const thr = state.data.settings.backtest_signal_score;
+  return h('div', null,
+    h('p', { class: 'note', text: `Rückblick auf die letzten ~60 Tage (Kurzfrist-Teil, Signal ab Wert ${thr}). So ging es nach früheren Tief-Signalen am selben Handelstag weiter:` }),
+    h('div', { class: 'scroll' }, h('table', null,
+      h('thead', null, h('tr', null, ['Haltedauer', 'Signale', 'Ø Kursänderung', 'im Plus', 'alle Zeitpunkte', 'nach Gebühren'].map((x, i) => h('th', { class: i ? 'n' : '', text: x })))),
+      h('tbody', null, rows.map(r => h('tr', null,
+        h('td', { text: `${nf(r.stunden, 0)} Std` }), h('td', { class: 'n', text: r.signale }),
+        h('td', { class: 'n ' + cls(r.schnitt_pct), text: pc(r.schnitt_pct, 3) }),
+        h('td', { class: 'n', text: r.trefferquote_pct == null ? '–' : nf(r.trefferquote_pct, 0) + ' %' }),
+        h('td', { class: 'n', text: pc(r.basis_schnitt_pct, 3) }),
+        h('td', { class: 'n ' + cls(r.schnitt_pct == null ? null : r.schnitt_pct - fs.cost), text: r.schnitt_pct == null ? '–' : pc(r.schnitt_pct - fs.cost, 2) })))))),
+    h('p', { class: 'note', text: 'Einschätzung: ' + rows.map(r => `${nf(r.stunden, 0)} Std: ${r.urteil}`).join(' · ') }));
+}
+function detailsBlock(sym) {
+  const k = sym.kennzahlen || {};
+  const fs = feeSettings();
+  const d = h('details', { 'data-sym': sym.symbol });
+  if (state.open.has(sym.symbol)) d.open = true;
+  d.addEventListener('toggle', () => { d.open ? state.open.add(sym.symbol) : state.open.delete(sym.symbol); });
+  d.append(h('summary', { text: 'Warum dieser Wert? Details und Rückblick' }));
+  d.append(h('div', { class: 'scroll' }, h('table', null,
+    h('thead', null, h('tr', null, h('th', { text: 'Kennzahl' }), h('th', { text: 'Lage' }), h('th', { text: 'Richtung' }))),
+    h('tbody', null, (sym.komponenten || []).map(c => h('tr', null, h('td', { text: c.name }), h('td', { text: c.text }), h('td', null, effBar(c.effekt), h('span', { class: 'sr', text: c.effekt >= 0 ? 'Richtung Tief' : 'Richtung Hoch' }))))))));
+  d.append(h('dl', { class: 'kv' },
+    h('dt', { text: 'Trend (Tageskurse)' }), h('dd', { text: sym.trend }),
+    h('dt', { text: '20-Tage-Spanne' }), h('dd', { text: `${nf(k.tief_20d)} – ${nf(k.hoch_20d)}` }),
+    h('dt', { text: 'Schnitt 50 / 200 Tage' }), h('dd', { text: `${nf(k.sma50)} / ${nf(k.sma200)}` }),
+    h('dt', { text: 'Übliche Schwankung in 4 Std' }), h('dd', { text: k.schwankung_4h_pct == null ? '–' : `± ${nf(k.schwankung_4h_pct)} %  (Statistik, keine Richtung)` }),
+    h('dt', { text: 'Gebühren-Hürde' }), h('dd', { text: `${nf(fs.cost, 1)} % für Kauf + Verkauf` })));
+  if (sym.trend === 'Abwärtstrend' && (sym.score || 0) > 25) d.append(h('p', { class: 'note', text: 'Achtung: Der Kurs liegt unter seinem 200-Tage-Schnitt. In Abwärtstrends fällt ein „billiger“ Kurs oft weiter.' }));
+  d.append(backtestBlock(sym));
+  return d;
+}
+/* ---------- Kurzfrist-Einschaetzung (Regelwerk, keine Anlageberatung) ---------- */
+const venueOf = sym => /\.DE$/.test(sym.symbol) ? 'Xetra' : 'US-Börse';
+const priceStamp = sym => sym.last_bar_ts ? `Kurs ${fmtTime(sym.last_bar_ts)} · ${venueOf(sym)}` : '';
+const eurLine = sym => (sym.currency === 'USD' && sym.price_eur != null) ? h('div', { class: 'sub', text: `≈ ${nf(sym.price_eur)} € umgerechnet` }) : null;
+function verdict(sym) {
+  const fs = feeSettings(), k = sym.kennzahlen || {};
+  const out = (code, label, reason, short) => ({ code, label, reason, short, glyph: { kauf: '✓', abwarten: '●', nein: '✕' }[code] });
+  if (sym.score == null) return out('abwarten', 'keine Einschätzung', 'Es liegen keine Daten vor.', 'keine Daten');
+  const vol = k.schwankung_4h_pct;
+  if (vol != null && fs.cost > vol) {
+    return out('nein', 'eher nicht', `Die Gebühren (${nf(fs.cost, 1)} %) sind höher als die übliche Schwankung in 4 Std (± ${nf(vol, 1)} %). Ein Kurzfrist-Trade lohnt sich so kaum.`, 'Gebühren zu hoch');
+  }
+  if (sym.zone === 'hoch') return out('nein', 'eher nicht', 'Hoch-Zone: Der Kurs steht nach den Kennzahlen eher hoch.', 'Hoch-Zone');
+  if (sym.zone === 'tief') {
+    if (sym.trend === 'Abwärtstrend') return out('abwarten', 'abwarten', 'Tief-Zone, aber der Kurs liegt im Abwärtstrend und fällt oft weiter.', 'Abwärtstrend');
+    const r = sym.rueckblick && sym.rueckblick['16'];
+    if (r && r.signale >= 20 && r.z != null && r.z >= 2 && r.schnitt_pct != null && r.schnitt_pct - fs.cost > 0) {
+      return out('kauf', 'prüfen', 'Tief-Zone. Im Rückblick war so ein Signal besser als der Durchschnitt und nach Gebühren im Plus (keine Garantie).', 'Rückblick besser als Durchschnitt');
+    }
+    return out('abwarten', 'abwarten', 'Tief-Zone, aber der Rückblick zeigt keinen belegten Vorteil nach Gebühren.', 'Rückblick ohne belegten Vorteil');
+  }
+  return out('abwarten', 'abwarten', 'Kein Signal (Wert im neutralen Bereich).', 'Kein Signal');
+}
+function card(sym) {
+  if (sym.error && sym.price == null) {
+    return h('article', { class: 'card' }, h('h3', { text: sym.name }), h('div', { class: 'sub', text: sym.symbol }),
+      h('p', { class: 'note', text: 'Für diesen ETF gibt es gerade keine Daten.' }), h('p', { class: 'sub', text: sym.error }));
+  }
+  const zoneCls = sym.zone || (sym.score >= 25 ? 'tief' : sym.score <= -25 ? 'hoch' : '');
+  const box = h('div', { class: 'chartbox' });
+  const el = h('article', { class: 'card', 'data-sym': sym.symbol },
+    h('div', { class: 'top' },
+      h('div', null, h('h3', { text: sym.name }), h('div', { class: 'sub', text: `${sym.symbol} · ${sym.group}` })),
+      h('div', { class: 'px' }, h('b', { text: nf(sym.price) + ' ' + ({ EUR: '€', USD: '$' }[sym.currency] || sym.currency || '') }), h('div', { class: cls(sym.change_pct_day), text: pc(sym.change_pct_day) + ' heute' }), eurLine(sym), h('div', { class: 'sub', text: priceStamp(sym) }))),
+    h('div', { class: 'zone ' + zoneCls }, h('span', { class: 'g', 'aria-hidden': 'true', text: glyphFor(sym) }), h('span', { text: sym.label }), h('span', { class: 'score', text: (sym.score > 0 ? '+' : '') + nf(sym.score, 0) })),
+    meter(sym.score, sym.zone),
+    (() => { const v = verdict(sym); return h('div', { class: 'verdict v-' + v.code }, h('b', { text: `${v.glyph} Kurzfrist-Kauf: ${v.label}` }), h('span', { text: v.reason })); })(),
+    sym.stale ? h('p', { class: 'note', text: `Veraltet: Das letzte Update dieses ETFs ist fehlgeschlagen (${sym.error}).` }) : null,
+    box,
+    detailsBlock(sym));
+  box._sym = sym;
+  return el;
+}
+function tableView(syms) {
+  const cols = [['ETF', 0], ['Kurzfrist-Kauf', 0], ['Kurs', 1], ['Heute', 1], ['Wert', 1], ['Zone', 0], ['RSI 15 Min', 1], ['Trend', 0], ['± 4 Std', 1], ['Rückblick (4 Std)', 0]];
+  return h('div', { class: 'scroll' }, h('table', null,
+    h('thead', null, h('tr', null, cols.map(([t, n]) => h('th', { class: n ? 'n' : '', text: t })))),
+    h('tbody', null, syms.map(sym => {
+      const k = sym.kennzahlen || {};
+      const r4 = sym.rueckblick && sym.rueckblick['16'];
+      const v = verdict(sym);
+      return h('tr', null,
+        h('td', null, h('b', { text: sym.name }), h('div', { class: 'sub', text: `${sym.symbol} · ${priceStamp(sym)}` })),
+        h('td', null, h('b', { text: `${v.glyph} ${v.label}` }), h('div', { class: 'sub', text: v.reason })),
+        h('td', { class: 'n', text: nf(sym.price) }), h('td', { class: 'n ' + cls(sym.change_pct_day), text: pc(sym.change_pct_day) }),
+        h('td', { class: 'n', text: sym.score == null ? '–' : nf(sym.score, 0) }),
+        h('td', { text: (sym.score == null ? '' : glyphFor(sym) + ' ') + sym.label }),
+        h('td', { class: 'n', text: nf(k.rsi15, 0) }), h('td', { text: sym.trend || '–' }),
+        h('td', { class: 'n', text: k.schwankung_4h_pct == null ? '–' : '± ' + nf(k.schwankung_4h_pct) + ' %' }),
+        h('td', { text: r4 ? `${r4.signale} Signale, Ø ${pc(r4.schnitt_pct, 2)} (${r4.urteil})` : '–' }));
+    }))));
+}
+
+/* ---------- Abschnitte ---------- */
+function renderTiles() {
+  const d = state.data, box = $('#tiles'); box.textContent = '';
+  const ok = d.symbols.filter(x => !x.error || x.price != null);
+  const tief = ok.filter(x => x.zone === 'tief').length, hoch = ok.filter(x => x.zone === 'hoch').length;
+  const kauf = ok.filter(x => verdict(x).code === 'kauf').length;
+  const vix = d.market && d.market.vix;
+  const fs = feeSettings();
+  const vols = ok.map(x => x.kennzahlen && x.kennzahlen.schwankung_4h_pct).filter(x => x != null).sort((a, b) => a - b);
+  const medVol = vols.length ? vols[Math.floor(vols.length / 2)] : null;
+
+  box.append(
+    h('div', { class: 'tile' }, h('div', { class: 'lbl', text: 'Angst-Index (VIX)' }),
+      h('div', { class: 'val', text: vix && vix.value != null ? nf(vix.value, 1) : '–' }),
+      h('div', { class: 'cap', text: vix && vix.value != null ? `${vix.level} · ${pc(vix.change_pct, 1)} zum Vortag` : 'keine Daten' })),
+    h('div', { class: 'tile' }, h('div', { class: 'lbl', text: 'Nachrichten-Stimmung (24 Std)' }),
+      h('div', { class: 'val', id: 'moodval', text: '–' }),
+      h('div', { class: 'cap', id: 'moodcap' })),
+    h('div', { class: 'tile' }, h('div', { class: 'lbl', text: 'ETFs in einer Zone' }),
+      h('div', { class: 'val', text: `${tief} tief · ${hoch} hoch` }),
+      h('div', { class: 'cap', text: `von ${ok.length} beobachteten Werten · Kurzfrist-Kauf „prüfen“: ${kauf}` })),
+    (() => {
+      const amount = h('input', { type: 'number', min: '1', step: '1', value: String(fs.amount), 'aria-label': 'Einsatz in Euro', inputmode: 'decimal' });
+      const fee = h('input', { type: 'number', min: '0', step: '0.1', value: String(fs.fee), 'aria-label': 'Gebühr pro Order in Euro', inputmode: 'decimal' });
+      const upd = () => {
+        const a = parseFloat(amount.value.replace(',', '.')), f = parseFloat(fee.value.replace(',', '.'));
+        if (a > 0 && f >= 0) { state.amount = a; state.fee = f; try { localStorage.setItem('etfbot.fees', JSON.stringify({ amount: a, fee: f })); } catch (e) { /* egal */ } renderAll(false); }
+      };
+      amount.addEventListener('change', upd); fee.addEventListener('change', upd);
+      return h('div', { class: 'tile' }, h('div', { class: 'lbl', text: 'Gebühren-Hürde pro Kurzfrist-Trade' }),
+        h('div', { class: 'val', text: nf(fs.cost, 1) + ' %' }),
+        h('div', { class: 'cap', text: medVol == null ? 'Kauf + Verkauf zusammen' : `Der Kurs muss so viel steigen, nur um Kauf + Verkauf zu bezahlen. Typische 4-Std-Schwankung: ± ${nf(medVol, 1)} %.` }),
+        h('div', { class: 'fees' }, h('label', null, 'Einsatz € ', amount), h('label', null, 'Gebühr/Order € ', fee)));
+    })());
+  updateMood();
+}
+const newsData = () => (state.news && state.news.news) || null;
+function updateMood() {
+  const v = $('#moodval'), c = $('#moodcap'), n = newsData(), mood = n && n.mood;
+  if (!v || !c) return;
+  v.textContent = mood ? mood.label : '–';
+  c.textContent = mood ? `${mood.n} Schlagzeilen, nur Stichwort-Zählung` : '';
+}
+const nameOf = symbol => {
+  const all = [...(state.data.symbols || []), ...(state.data.aktien || [])];
+  const x = all.find(y => y.symbol === symbol);
+  return x ? x.name.replace(/ \(.*\)$/, '') : symbol;
+};
+/* Meldungen zu einer Aktie: genannt = steht in der Schlagzeile, thema = koennte ueber ein Thema betroffen sein */
+function newsFor(symbol) {
+  const n = newsData(); if (!n) return { genannt: [], thema: [], stimmung: null };
+  const genannt = n.items.filter(it => (it.werte || []).includes(symbol));
+  const thema = n.items.filter(it => (it.werte_thema || []).includes(symbol) && !(it.werte || []).includes(symbol));
+  let stimmung = null;
+  if (genannt.length >= 2) { const a = genannt.reduce((x, it) => x + it.sentiment, 0) / genannt.length; stimmung = a > 0.15 ? 'eher positiv' : a < -0.15 ? 'eher negativ' : 'gemischt'; }
+  return { genannt, thema, stimmung };
+}
+function showNewsFor(symbol) {
+  state.newsSym = symbol; state.theme = null; renderNews();
+  const box = $('#newsbox'); if (box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderBanners() {
+  const d = state.data, box = $('#banners'); box.textContent = '';
+  if (state.err) box.append(h('div', { class: 'banner warn', text: 'Die Daten konnten gerade nicht geladen werden. Es werden die zuletzt geladenen Werte angezeigt. ' + state.err }));
+  if (!d) return;
+  if (d.demo) box.append(h('div', { class: 'banner info', text: 'Das sind Beispieldaten. Sobald der Bot das erste Mal mit echten Kursen gelaufen ist, ersetzt er sie automatisch.' }));
+  if (!d.demo) {
+    if (d.ok_symbols === 0) box.append(h('div', { class: 'banner warn', text: 'Der Bot konnte beim letzten Lauf keine Kurse abrufen (Yahoo Finance hat nicht geantwortet). Er versucht es beim nächsten Lauf erneut.' }));
+    const gen = Date.parse(d.generated_at) / 1000;
+    const anyOpen = d.symbols.some(marketOpen);
+    if (anyOpen && nowSec() - gen > 45 * 60) box.append(h('div', { class: 'banner warn', text: `Der Bot hat sich zuletzt ${ago(gen)} gemeldet. Die Börse ist offen, die Werte können veraltet sein.` }));
+    const stale = d.symbols.filter(x => x.stale).length;
+    if (stale) box.append(h('div', { class: 'banner warn', text: `${stale} ETF(s) konnten nicht aktualisiert werden und zeigen ältere Werte.` }));
+  }
+}
+function renderMain() {
+  const d = state.data, box = $('#main'); box.textContent = '';
+  if (state.view === 'table') { box.append(tableView(d.symbols.filter(x => x.price != null))); return; }
+  const grid = h('div', { class: 'cards' });
+  d.symbols.forEach(sym => grid.append(card(sym)));
+  box.append(grid);
+  drawAllCharts();
+}
+function drawAllCharts() {
+  document.querySelectorAll('.chartbox').forEach(b => { if (b._sym) drawChart(b, b._sym, state.range); });
+}
+function renderNews() {
+  const n = newsData(), box = $('#newsbox'); box.textContent = '';
+  if (!n || !n.items.length) { box.append(h('div', { class: 'empty', text: 'Keine Meldungen geladen.' })); return; }
+  const info = n.themen_info || {};
+  const themes = Object.entries(n.themes || {}).sort((a, b) => b[1] - a[1]);
+  const withStocks = n.items.filter(it => (it.werte || []).length).length;
+  const pick = t => { state.theme = t; state.newsSym = null; renderNews(); };
+  const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Nach Thema filtern' },
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(!state.theme && !state.newsSym), text: 'Alle', onclick: () => pick(null) }),
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(state.theme === '__werte'), text: `Mit Aktien-Bezug (${withStocks})`, onclick: () => pick('__werte') }),
+    state.newsSym ? h('button', { type: 'button', class: 'chip', 'aria-pressed': 'true', text: `${nameOf(state.newsSym)} ✕`, title: 'Filter aufheben', onclick: () => pick(null) }) : null,
+    themes.map(([t, c]) => h('button', { type: 'button', class: 'chip', 'aria-pressed': String(state.theme === t), text: `${t} (${c})`, onclick: () => pick(t) })));
+  const keep = it => state.newsSym ? ((it.werte || []).includes(state.newsSym) || (it.werte_thema || []).includes(state.newsSym))
+    : state.theme === '__werte' ? (it.werte || []).length > 0 : !state.theme || it.themes.includes(state.theme);
+  const list = h('ul', { class: 'news' });
+  const shown = n.items.filter(keep).slice(0, 40);
+  shown.forEach(it => {
+    const sent = it.sentiment > 0 ? ['p', '▲ positiv'] : it.sentiment < 0 ? ['m', '▼ negativ'] : ['o', '● neutral'];
+    const safeUrl = /^https?:\/\//.test(it.url || '');
+    const title = safeUrl ? h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', text: it.title }) : h('span', { text: it.title });
+    const gen = (it.werte || []).map(nameOf), th = it.werte_thema || [];
+    const why = (it.themes || []).map(t => info[t]).find(x => x && x.werte.some(w => th.includes(w)));
+    const more = th.length > 4 ? ` und ${th.length - 4} weitere` : '';
+    list.append(h('li', null, h('div', null, h('span', { class: 'sent ' + sent[0], text: sent[1] }), title),
+      h('div', { class: 'meta', text: [it.source, ago(it.ts), it.themes.join(', ')].filter(Boolean).join(' · ') }),
+      gen.length ? h('div', { class: 'wert' }, h('b', { text: 'Genannt: ' }), gen.join(', ')) : null,
+      th.length ? h('div', { class: 'wert', text: `Könnte betreffen: ${th.slice(0, 4).map(nameOf).join(', ')}${more}${why ? '. ' + why.warum : ''}` }) : null));
+  });
+  const stand = state.news && Date.parse(state.news.generated_at) / 1000;
+  box.append(h('p', { class: 'note', text: `Meldungen Stand ${stand ? ago(stand) : '–'}, der Bot sucht etwa alle 10 Minuten neu. „Genannt“ heißt: Der Name steht in der Schlagzeile. „Könnte betreffen“ ist eine grobe Faustregel nach Thema, keine Prognose.` }), chips);
+  if (!shown.length) box.append(h('div', { class: 'empty', text: 'Keine Meldung zu diesem Filter.' }));
+  else box.append(list);
+  const feeds = (n.feeds || []).filter(f => !f.ok);
+  if (feeds.length) box.append(h('p', { class: 'note', text: `Nicht erreichbar beim letzten Lauf: ${feeds.map(f => f.name).join(', ')}` }));
+}
+function renderLog() {
+  const box = $('#logbox'); box.textContent = '';
+  const fs = feeSettings();
+  const entries = (state.log || []).slice().sort((a, b) => b.ts - a.ts);
+  if (!entries.length) {
+    box.append(h('div', { class: 'empty', text: 'Noch keine Signale protokolliert. Sobald ein ETF in die Tief- oder Hoch-Zone läuft, hält der Bot das fest und trägt später ein, wie sich der Kurs nach 2 und 4 Stunden entwickelt hat. Das ist der ehrlichste Test, ob die Signale etwas taugen.' }));
+    return;
+  }
+  const done = entries.filter(e => e.typ === 'tief' && e.ret_4h_pct != null);
+  const doneH = entries.filter(e => e.typ === 'hoch' && e.ret_4h_pct != null);
+  const lines = [];
+  if (done.length) {
+    const avg = done.reduce((a, e) => a + e.ret_4h_pct, 0) / done.length;
+    lines.push(`Tief-Signale mit Ergebnis nach 4 Std: ${done.length}. Ø Kursänderung ${pc(avg, 2)}, im Plus in ${done.filter(e => e.ret_4h_pct > 0).length} von ${done.length} Fällen. Nach Gebühren (${nf(fs.cost, 1)} %): ${pc(avg - fs.cost, 2)}.`);
+  }
+  if (doneH.length) lines.push(`Hoch-Signale mit Ergebnis nach 4 Std: ${doneH.length}. Kurs danach gefallen in ${doneH.filter(e => e.ret_4h_pct < 0).length} Fällen.`);
+  if (!lines.length) lines.push('Die ersten Signale sind noch zu frisch für ein Ergebnis (es braucht mindestens 2 bis 4 Stunden).');
+  box.append(h('p', { class: 'note', text: lines.join(' ') }));
+  box.append(h('div', { class: 'scroll' }, h('table', null,
+    h('thead', null, h('tr', null, ['Zeit', 'ETF', 'Signal', 'Wert', 'Kurs', 'nach 2 Std', 'nach 4 Std'].map((x, i) => h('th', { class: i > 2 ? 'n' : '', text: x })))),
+    h('tbody', null, entries.slice(0, 15).map(e => h('tr', null,
+      h('td', { text: fmtDateTime(e.ts) }), h('td', { text: e.name }),
+      h('td', { text: (e.typ === 'tief' ? '▼ Tief' : '▲ Hoch') }),
+      h('td', { class: 'n', text: nf(e.score, 0) }), h('td', { class: 'n', text: nf(e.kurs) }),
+      h('td', { class: 'n ' + cls(e.ret_2h_pct), text: e.ret_2h_pct == null ? 'offen' : pc(e.ret_2h_pct, 2) }),
+      h('td', { class: 'n ' + cls(e.ret_4h_pct), text: e.ret_4h_pct == null ? 'offen' : pc(e.ret_4h_pct, 2) })))))));
+}
+function updateStatus() {
+  const el = $('#status'), d = state.data;
+  if (!d) return;
+  const gen = Date.parse(d.generated_at) / 1000;
+  const open = d.symbols.some(marketOpen);
+  el.textContent = `${d.demo ? 'Beispieldaten · ' : ''}Stand ${fmtTime(gen)} (${ago(gen)}) · Börse ${open ? 'offen' : 'geschlossen'}`;
+}
+function renderAll(full = true) {
+  if (!state.data) return;
+  renderBanners(); renderTiles(); renderMain(); renderLangfrist(); renderAktien(); renderNews(); renderLog(); updateStatus();
+}
+
+const LANG_NOTE = {
+  'intakt': 'Der Kurs steht nahe am Hoch, der Trend zeigt nach oben.',
+  'seitwärts': 'Kein klarer Trend, der Kurs steht nahe am Hoch.',
+  'Rücksetzer': 'Etwas unter dem Hoch. Ein Sparplan bekommt dadurch pro Euro etwas mehr Anteile.',
+  'Korrektur': 'Deutlich unter dem Hoch. Ob und wann sich der Kurs erholt, ist offen. Bei breiten Indizes folgte historisch meist eine Erholung, bei Einzelaktien ist das weniger sicher.',
+  'Schwäche': 'Abwärtstrend: Der Kurs liegt unter dem 200-Tage-Schnitt. Solche Phasen können lange dauern.',
+};
+function renderLangfrist() {
+  const box = $('#langbox'); box.textContent = '';
+  const rows = state.data.symbols.filter(x => x.price != null && x.langfrist);
+  if (!rows.length) { box.append(h('div', { class: 'empty', text: 'Keine Langfrist-Daten vorhanden.' })); return; }
+  box.append(h('p', { class: 'note', text: 'Für einen Sparplan zählen Dauer und Regelmäßigkeit mehr als der Einstiegszeitpunkt. Diese Tabelle ordnet nur ein, wo die Kurse gerade stehen. „Hoch“ ist das 52-Wochen-Hoch, „Größter Rückgang“ der tiefste Absturz vom jeweiligen Hoch innerhalb des letzten Jahres. Vergangene Entwicklung ist keine Garantie, und das ist keine Anlageberatung.' }));
+  const cols = [['Name', 0], ['Lage', 0], ['Abstand zum Hoch', 1], ['1 Monat', 1], ['3 Monate', 1], ['1 Jahr', 1], ['Schwankung p. a.', 1], ['Größter Rückgang', 1]];
+  box.append(h('div', { class: 'scroll' }, h('table', null,
+    h('thead', null, h('tr', null, cols.map(([t, n]) => h('th', { class: n ? 'n' : '', text: t })))),
+    h('tbody', null, rows.map(sym => {
+      const L = sym.langfrist;
+      return h('tr', null,
+        h('td', null, h('b', { text: sym.name }), h('div', { class: 'sub', text: sym.symbol })),
+        h('td', { style: { minWidth: '200px' } }, h('b', { text: L.lage }), h('div', { class: 'sub', text: LANG_NOTE[L.lage] || L.text })),
+        h('td', { class: 'n ' + cls(L.abstand_hoch_pct), text: pc(L.abstand_hoch_pct, 1) }),
+        h('td', { class: 'n ' + cls(L.r1m_pct), text: pc(L.r1m_pct, 1) }),
+        h('td', { class: 'n ' + cls(L.r3m_pct), text: pc(L.r3m_pct, 1) }),
+        h('td', { class: 'n ' + cls(L.r1j_pct), text: pc(L.r1j_pct, 1) }),
+        h('td', { class: 'n', text: L.vol_pa_pct == null ? '–' : nf(L.vol_pa_pct, 1) + ' %' }),
+        h('td', { class: 'n ' + cls(L.max_rueckgang_pct), text: pc(L.max_rueckgang_pct, 1) }));
+    })))));
+}
+function renderAktien() {
+  const box = $('#aktienbox'); box.textContent = '';
+  const all = (state.data.aktien || []).filter(x => x.price != null);
+  if (!all.length) { box.append(h('div', { class: 'empty', text: 'Noch keine Aktien ausgewertet. Das passiert beim nächsten Lauf des Bots.' })); return; }
+  const fs = feeSettings();
+  const rank = { kauf: 0, abwarten: 1, nein: 2 };
+  const rows = all.map(a => ({ a, v: verdict(a) }))
+    .filter(r => !state.aktienFilter || r.a.zone === state.aktienFilter)
+    .sort((x, y) => rank[x.v.code] - rank[y.v.code] || (y.a.score ?? -999) - (x.a.score ?? -999));
+  const nTief = all.filter(a => a.zone === 'tief').length, nHoch = all.filter(a => a.zone === 'hoch').length;
+  const nPruef = all.filter(a => verdict(a).code === 'kauf').length;
+  const st = state.data.aktien_status || {};
+  box.append(h('p', { class: 'note', text: `Aktien schwanken stärker als ETFs. Dadurch sind kurzfristige Gewinne eher möglich, aber auch Verluste. Der „Mindest-Einsatz“ zeigt, ab welchem Einsatz die Gebühren (${nf(fs.fee, 2)} € je Order) kleiner sind als die übliche Schwankung in 4 Std. Aktuell: ${nTief} in der Tief-Zone, ${nPruef} mit „prüfen“. Sortiert nach Einschätzung und Wert. Rechenhilfe, keine Empfehlung.` }));
+  box.append(h('div', { class: 'chips', role: 'group', 'aria-label': 'Aktien filtern' },
+    [[null, `Alle (${all.length})`], ['tief', `Tief-Zone (${nTief})`], ['hoch', `Hoch-Zone (${nHoch})`]].map(([k, t]) =>
+      h('button', { type: 'button', class: 'chip', 'aria-pressed': String(state.aktienFilter === k), text: t, onclick: () => { state.aktienFilter = k; renderAktien(); } }))));
+  if (!rows.length) { box.append(h('div', { class: 'empty', text: 'Keine Aktie in dieser Zone.' })); }
+  else {
+    const cols = [['Aktie', 0], ['Kurzfrist-Kauf', 0], ['Kurs', 1], ['Heute', 1], ['Wert', 1], ['Zone', 0], ['± 4 Std', 1], ['Mindest-Einsatz', 1], ['Meldungen', 0], ['Rückblick (4 Std)', 0]];
+    box.append(h('div', { class: 'scroll' }, h('table', null,
+      h('thead', null, h('tr', null, cols.map(([t, n]) => h('th', { class: n ? 'n' : '', text: t })))),
+      h('tbody', null, rows.map(({ a, v }) => {
+        const k = a.kennzahlen || {}, r4 = a.rueckblick && a.rueckblick['16'];
+        const usd = a.currency === 'USD' && a.price_eur != null;
+        return h('tr', null,
+          h('td', null, h('b', { text: a.name }), h('div', { class: 'sub', text: [a.symbol, a.group, a.stale ? 'veraltet' : ''].filter(Boolean).join(' · ') })),
+          h('td', { title: v.reason }, h('b', { text: `${v.glyph} ${v.label}` }), h('div', { class: 'sub', text: v.short })),
+          h('td', { class: 'n' }, h('b', { text: usd ? `≈ ${nf(a.price_eur)} €` : nf(a.price) + (a.currency === 'EUR' ? ' €' : '') }), usd ? h('div', { class: 'sub', text: nf(a.price) + ' $' }) : null),
+          h('td', { class: 'n ' + cls(a.change_pct_day), text: pc(a.change_pct_day) }),
+          h('td', { class: 'n', text: a.score == null ? '–' : nf(a.score, 0) }),
+          h('td', { text: (a.score == null ? '' : glyphFor(a) + ' ') + a.label }),
+          h('td', { class: 'n', text: k.schwankung_4h_pct == null ? '–' : '± ' + nf(k.schwankung_4h_pct) + ' %' }),
+          h('td', { class: 'n', text: k.schwankung_4h_pct ? 'ab ' + nf(200 * fs.fee / k.schwankung_4h_pct, 0) + ' €' : '–' }),
+          (() => {
+            const nw = newsFor(a.symbol);
+            if (!nw.genannt.length && !nw.thema.length) return h('td', { style: { minWidth: '120px' } }, h('span', { class: 'sub', text: 'keine' }));
+            const line = (nw.genannt.length ? `${nw.genannt.length} genannt` : '') + (nw.stimmung ? ` (${nw.stimmung})` : '');
+            return h('td', { style: { minWidth: '120px' } },
+              h('button', { type: 'button', class: 'lk', title: 'Meldungen anzeigen', onclick: () => showNewsFor(a.symbol) }, line || `${nw.thema.length} über Themen`),
+              nw.genannt.length && nw.thema.length ? h('div', { class: 'sub', text: `${nw.thema.length} über Themen` }) : null);
+          })(),
+          h('td', null, r4 ? [`${r4.signale} Signale, Ø ${pc(r4.schnitt_pct, 2)}`, h('div', { class: 'sub', text: r4.urteil })] : '–'));
+      })))));
+  }
+  if (st.fehler) box.append(h('p', { class: 'note', text: `${st.fehler} von ${st.gesamt} Aktien konnten beim letzten Lauf nicht geladen werden (Yahoo Finance). Falls vorhanden, siehst du ihre letzten Werte als „veraltet“.` }));
+}
+
+/* ---------- Laden ---------- */
+async function getJson(name) {
+  const r = await fetch(`${name}?t=${Math.floor(Date.now() / 60000)}`, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
+  return r.json();
+}
+async function load() {
+  try {
+    const d = await getJson('data.json');
+    let log = state.log;
+    try { const l = await getJson('signal_log.json'); log = Array.isArray(l.entries) ? l.entries : []; } catch (e) { /* Protokoll ist optional */ }
+    let nws = null;
+    try { nws = await getJson('news.json'); } catch (e) { /* Nachrichten sind optional */ }
+    state.err = null;
+    const logKey = JSON.stringify(log), newsNew = nws && (!state.news || nws.generated_at !== state.news.generated_at);
+    if (d.generated_at !== state.gen || logKey !== state.logKey) {
+      state.data = d; state.gen = d.generated_at; state.log = log; state.logKey = logKey;
+      if (newsNew) state.news = nws;
+      renderAll(); if (isLong(state.range)) loadCharts();
+    } else {
+      if (newsNew) { state.news = nws; updateMood(); renderAktien(); renderNews(); }
+      renderBanners(); updateStatus();
+    }
+  } catch (e) {
+    state.err = String(e.message || e);
+    if (state.data) renderBanners();
+    else { $('#status').textContent = 'Keine Daten'; $('#banners').append(h('div', { class: 'banner warn', text: 'Die Datei data.json konnte nicht geladen werden. Läuft der Bot schon? ' + state.err })); }
+  }
+}
+
+/* ---------- Bedienung ---------- */
+document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => {
+  state.range = b.dataset.range;
+  document.querySelectorAll('[data-range]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  drawAllCharts();
+  if (isLong(state.range)) loadCharts();
+}));
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
+  state.view = b.dataset.view;
+  document.querySelectorAll('[data-view]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  if (state.data) renderMain();
+}));
+$('#reload').addEventListener('click', load);
+let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(drawAllCharts, 150); });
+setInterval(load, 60000);
+setInterval(() => { updateStatus(); }, 30000);
+load();
+})();
+</script>
+</body>
+</html>
